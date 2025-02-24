@@ -233,14 +233,20 @@ class ThetaOptionClient(_ThetaClient):
 
     @staticmethod
     def _populate_symbol_params(request: Dict[str, Any], params: Dict[str, Any]) -> None:
-        def _decimal(v):
-            whole = v // 1000
-            frac = v % 1000
-            return decimal.Decimal(f'{whole}.{frac}')
-
         params['symbol'] = request['root']
-        params['right'] = request['right']
-        params['strike'] = _decimal(request['strike'])
+
+        if 'right' not in params:
+            try:
+                params['right'] = request['right']
+
+            except KeyError:
+                print(params)
+                print(request)
+                raise
+
+        if 'strike' not in params:
+            params['strike'] = parse_strike(request)
+
         # TODO: I might want to reconsider the fact that the parse_ functions take a dict.
         params['expiration'] = parse_date({'date': request['exp']})
 
@@ -255,28 +261,38 @@ class ThetaOptionClient(_ThetaClient):
         return OptionTrade(**params)
 
     def _get_at_time(
-        self, request: str, symbol: str, expiration: DateValue, strike: PriceValue,
-        right: OptionRight, start_date: str, end_date: str, time: int,
+        self, request: str, *, symbol: str, expiration: DateValue,
+        start_date: str, end_date: str, time: int,
+        strike: Optional[PriceValue]=None, right: Optional[OptionRight],
     ) -> Tuple[Dict[str, Any], AsyncGenerator[Dict[str, str], None]]:
 
         params = {
             'root': symbol,
-            'strike': format_price(strike),
             'exp': format_date(expiration),
-            'right': right,
             'start_date': start_date,
             'end_date': end_date,
             'ivl': time,
             'rth': 'false'
         }
 
-        split_days = self.date_range_params(30)
+        if strike and right:
+            params['strike'] = format_price(strike)
+            params['right'] = right
 
-        return params, self.stream_data('at_time/option', request,  params_gen=split_days, **params)
+            days = 30
+            get_type = 'at_time'
+
+        else:
+            days = 5
+            get_type = 'bulk_at_time'
+
+        split_days = self.date_range_params(days)
+
+        return params, self.stream_data(get_type, 'option', request,  params_gen=split_days, **params)
 
     async def _get_quotes_at_time(
-        self, symbol: str, expiration: DateValue, strike: PriceValue,
-        right: OptionRight, start_date: str, end_date: str, time: int,
+        self, symbol: str, expiration: DateValue, start_date: str, end_date: str, time: int,
+        strike: Optional[PriceValue]=None, right: Optional[OptionRight]=None,
     ) -> AsyncGenerator[OptionQuote, None]:
 
         params, gen = self._get_at_time(
@@ -326,9 +342,27 @@ class ThetaOptionClient(_ThetaClient):
 
         return await anext(gen)
 
+    async def get_all_quotes_at_time(
+        self, symbol: str, expiration: DateValue, start_date: DateValue, end_date: DateValue, time: TimeValue,
+    ) -> AsyncGenerator[OptionQuote, None]:
+        """
+        Get quotes at a specific time of day for all contracts for a range of
+        days.
+        """
+        start_date = format_date(start_date)
+        end_date = format_date(end_date)
+        time = format_time(time)
+
+        gen = self._get_quotes_at_time(
+            symbol=symbol, expiration=expiration, start_date=start_date, end_date=end_date, time=time
+        )
+
+        async for quote in gen:
+            yield quote
+
     async def _get_trades_at_time(
-        self, symbol: str, expiration: DateValue, strike: PriceValue,
-        right: OptionRight, start_date: str, end_date: str, time: int,
+        self, symbol: str, expiration: DateValue, start_date: str, end_date: str, time: int,
+        strike: Optional[PriceValue]=None, right: Optional[OptionRight]=None,
     ) -> AsyncGenerator[OptionTrade, None]:
 
         params, gen = self._get_at_time(
@@ -374,6 +408,24 @@ class ThetaOptionClient(_ThetaClient):
         )
 
         return await anext(gen)
+
+    async def get_all_trades_at_time(
+        self, symbol: str, expiration: DateValue, start_date: DateValue, end_date: DateValue, time: TimeValue,
+    ) -> AsyncGenerator[OptionQuote, None]:
+        """
+        Get trades at a specific time of day for all contracts for a range of
+        days.
+        """
+        start_date = format_date(start_date)
+        end_date = format_date(end_date)
+        time = format_time(time)
+
+        gen = self._get_trades_at_time(
+            symbol=symbol, expiration=expiration, start_date=start_date, end_date=end_date, time=time
+        )
+
+        async for trade in gen:
+            yield trade
 
 
 class ThetaStockClient(_ThetaClient):

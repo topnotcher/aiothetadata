@@ -3,7 +3,7 @@ import datetime
 from typing import Dict, AsyncGenerator, Any
 
 from . import datetime as _datetime
-from .constants import QuoteCondition, Exchange, TradeCondition
+from .constants import QuoteCondition, Exchange, TradeCondition, OptionRight
 
 
 __all__ = (
@@ -13,6 +13,7 @@ __all__ = (
     'parse_time',
     'parse_quote_fields',
     'parse_trade_fields',
+    'parse_strike',
 )
 
 
@@ -79,6 +80,13 @@ def parse_date_time(data: Dict[str, str]) -> _datetime.datetime:
     )
 
 
+def parse_strike(data: Dict[str, Any]) -> decimal.Decimal:
+    """
+    Parse the strike (``int`` or ``str``) in 1/10 cent into a decimal.
+    """
+    return decimal.Decimal(data['strike']) / 1000
+
+
 def parse_quote_fields(data: Dict[str, str]) -> Dict[str, Any]:
     """
     Parse quote fields in responses.
@@ -86,8 +94,13 @@ def parse_quote_fields(data: Dict[str, str]) -> Dict[str, Any]:
     parsed = {}
 
     for field in ('bid', 'ask'):
-        if field in data:
-            parsed[field] = decimal.Decimal(data[field])
+        parsed[field] = decimal.Decimal(data[field])
+
+    if 'strike' in data:
+        parsed['strike'] = parse_strike(data)
+
+    if 'right' in data:
+        parsed['right'] = OptionRight(data['right'])
 
     for field in ('bid_size', 'ask_size'):
         parsed[field] = int(data[field])
@@ -121,6 +134,12 @@ def parse_trade_fields(data: Dict[str, str]) -> Dict[str, Any]:
 
     for field in ('exchange', ):
         parsed[field] = Exchange(int(data[field]))
+
+    if 'strike' in data:
+        parsed['strike'] = parse_strike(data)
+
+    if 'right' in data:
+        parsed['right'] = OptionRight(data['right'])
 
     conditions = []
     condition_fields = ('condition', 'ext_condition1', 'ext_condition2', 'ext_condition3', 'ext_condition4')

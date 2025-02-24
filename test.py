@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import collections
 
 from aiothetadata.client import ThetaClient
 from aiothetadata.constants import OptionRight
@@ -104,6 +105,59 @@ async def main():
         print()
         print('ZBRA trade 2/20/2025 @ 10:00')
         print('\t', data)
+
+        quotes = client.option.get_all_quotes_at_time(
+            symbol='SPXW',
+            expiration=20250221,
+            start_date=20250220,
+            end_date=20250220,
+            time='10:00:00',
+        )
+
+        print()
+        print('SPXW 20250221 quotes 2/20/2025 @ 10:00')
+        async for quote in iter_condensed(quotes, 5):
+            print('\t', f'${quote.strike}', quote.right, str(quote.time), f'bid: ${quote.bid}', f'ask: ${quote.ask}')
+
+        trades = client.option.get_all_trades_at_time(
+            symbol='SPXW',
+            expiration=20250221,
+            start_date=20250220,
+            end_date=20250220,
+            time='10:00:00',
+        )
+
+        print()
+        print('SPXW 20250221 trades 2/20/2025 @ 10:00')
+        async for trade in iter_condensed(trades, 5):
+            print('\t', f'${trade.strike}', trade.right, trade.time, f'price: ${trade.price}', 'size:', trade.size)
+
+
+async def iter_condensed(gen, num):
+    skipped = 0
+    start = 0
+    total = 0
+    last_n = collections.deque()
+
+    async for thing in gen:
+        total += 1
+        if start < num:
+            yield thing
+            start += 1
+
+        else:
+            last_n.append(thing)
+
+            if len(last_n) > num:
+                last_n.popleft()
+                skipped += 1
+
+    print(f'... skipped {skipped} ...')
+
+    for thing in last_n:
+        yield thing
+
+    print('total:', total)
 
 
 if __name__ == '__main__':

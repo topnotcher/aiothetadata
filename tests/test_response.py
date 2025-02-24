@@ -62,7 +62,9 @@ def test_parse_trade_fields():
         'price_flags': '1',
         'volume_type': '0',
         'records_back': '7',
-        'date': '20250218'
+        'date': '20250218',
+        'strike': '123456',
+        'right': 'C',
     }
     parsed = {
         'price': Decimal('4.6500'),
@@ -71,7 +73,9 @@ def test_parse_trade_fields():
         'records_back': 7,
         'time': datetime.datetime(2025, 2, 18, 9, 58, 58, 270000),
         'exchange': Exchange.CBOE,
-        'conditions': (TradeCondition.MULTI_LEG_AUTOELEC_TRADE, TradeCondition.POSIT)
+        'conditions': (TradeCondition.MULTI_LEG_AUTOELEC_TRADE, TradeCondition.POSIT),
+        'right': OptionRight.CALL,
+        'strike': Decimal('123.456'),
     }
 
     assert parse_trade_fields(raw) == parsed
@@ -89,10 +93,13 @@ def test_parse_quote_fields():
         'ask': '5.2000',
         'ask_condition': '50',
         'date': '20250217',
+        'strike': '123456',
+        'right': 'C',
     }
     parsed = {
         'bid': Decimal('5.0000'),
         'ask': Decimal('5.2000'),
+        'strike': Decimal('123.456'),
         'bid_size': 169,
         'ask_size': 30,
         'bid_condition': QuoteCondition.NATIONAL_BBO,
@@ -100,6 +107,7 @@ def test_parse_quote_fields():
         'time': datetime.datetime(2025, 2, 17, 10, 0),
         'bid_exchange': Exchange.CBOE,
         'ask_exchange': Exchange.CBOE,
+        'right': OptionRight.CALL,
     }
 
     assert parse_quote_fields(raw) == parsed
