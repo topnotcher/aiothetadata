@@ -233,16 +233,11 @@ class ThetaOptionClient(_ThetaClient):
 
     @staticmethod
     def _populate_symbol_params(request: Dict[str, Any], params: Dict[str, Any]) -> None:
-        params['symbol'] = request['root']
+        if 'symbol' not in params:
+            params['symbol'] = request['root']
 
         if 'right' not in params:
-            try:
-                params['right'] = request['right']
-
-            except KeyError:
-                print(params)
-                print(request)
-                raise
+            params['right'] = request['right']
 
         if 'strike' not in params:
             params['strike'] = parse_strike(request)

@@ -102,6 +102,9 @@ def parse_quote_fields(data: Dict[str, str]) -> Dict[str, Any]:
     if 'right' in data:
         parsed['right'] = OptionRight(data['right'])
 
+    if 'root' in data:
+        parsed['symbol'] = data['root']
+
     for field in ('bid_size', 'ask_size'):
         parsed[field] = int(data[field])
 
@@ -140,6 +143,9 @@ def parse_trade_fields(data: Dict[str, str]) -> Dict[str, Any]:
 
     if 'right' in data:
         parsed['right'] = OptionRight(data['right'])
+
+    if 'root' in data:
+        parsed['symbol'] = data['root']
 
     conditions = []
     condition_fields = ('condition', 'ext_condition1', 'ext_condition2', 'ext_condition3', 'ext_condition4')
