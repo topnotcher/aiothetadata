@@ -258,7 +258,8 @@ class TestThetaOptionClient(BaseThetaClientTest):
         )
         handler.assert_csv()
 
-        assert isinstance(quote, OptionQuote)
+        assert isinstance(quote, Quote)
+        assert quote.type == FinancialEntityType.OPTION
         expected = {
             'root': 'SPXW',
             'strike': '6000000',
@@ -344,7 +345,8 @@ class TestThetaOptionClient(BaseThetaClientTest):
         )
 
         async for quote in gen:
-            assert isinstance(quote, OptionQuote)
+            assert isinstance(quote, Quote)
+            assert quote.type == FinancialEntityType.OPTION
 
         expected = {
             'root': 'SPXW',
@@ -383,7 +385,8 @@ class TestThetaOptionClient(BaseThetaClientTest):
         )
 
         async for quote in gen:
-            assert isinstance(quote, OptionQuote)
+            assert isinstance(quote, Quote)
+            assert quote.type == FinancialEntityType.OPTION
             assert quote.symbol == 'SPX'
 
         expected = {
@@ -425,7 +428,8 @@ class TestThetaOptionClient(BaseThetaClientTest):
         trades = []
         async for trade in gen:
             trades.append(trade)
-            assert isinstance(trade, OptionTrade)
+            assert isinstance(trade, Trade)
+            assert trade.type == FinancialEntityType.OPTION
 
         assert len(trades) == 4
 

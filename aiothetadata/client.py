@@ -232,27 +232,33 @@ class ThetaOptionClient(_ThetaClient):
         return [r['root'] async for r in self.stream_data('list/roots/option')]
 
     @staticmethod
-    def _populate_symbol_params(request: Dict[str, Any], params: Dict[str, Any]) -> None:
-        if 'symbol' not in params:
-            params['symbol'] = request['root']
+    def _populate_entity_params(request: Dict[str, Any], params: Dict[str, Any]) -> None:
+        entity_params = {}
+        for param in ('symbol', 'right', 'strike', 'expiration'):
+            entity_params[param] = params.pop(param, None)
 
-        if 'right' not in params:
-            params['right'] = request['right']
+        if not entity_params.get('symbol'):
+            entity_params['symbol'] = request['root']
 
-        if 'strike' not in params:
-            params['strike'] = parse_strike(request['strike'])
+        if not entity_params.get('right'):
+            entity_params['right'] = request['right']
 
-        params['expiration'] = parse_date(request['exp'])
+        if not entity_params.get('strike'):
+            entity_params['strike'] = parse_strike(request['strike'])
 
-    def _make_quote(self, request: Dict[str, Any], response: Dict[str, Any]) -> OptionQuote:
+        entity_params['expiration'] = parse_date(request['exp'])
+
+        params['entity'] = Option.create(**entity_params)
+
+    def _make_quote(self, request: Dict[str, Any], response: Dict[str, Any]) -> Quote:
         params = parse_quote_fields(response)
-        self._populate_symbol_params(request, params)
-        return OptionQuote(**params)
+        self._populate_entity_params(request, params)
+        return Quote(**params)
 
-    def _make_trade(self, request: Dict[str, Any], response: Dict[str, Any]) -> OptionTrade:
+    def _make_trade(self, request: Dict[str, Any], response: Dict[str, Any]) -> Trade:
         params = parse_trade_fields(response)
-        self._populate_symbol_params(request, params)
-        return OptionTrade(**params)
+        self._populate_entity_params(request, params)
+        return Trade(**params)
 
     def _get_at_time(
         self, request: str, *, symbol: str, expiration: DateValue,
@@ -287,7 +293,7 @@ class ThetaOptionClient(_ThetaClient):
     async def _get_quotes_at_time(
         self, symbol: str, expiration: DateValue, start_date: str, end_date: str, time: int,
         strike: Optional[PriceValue]=None, right: Optional[OptionRight]=None,
-    ) -> AsyncGenerator[OptionQuote, None]:
+    ) -> AsyncGenerator[Quote, None]:
 
         params, gen = self._get_at_time(
             request='quote', symbol=symbol, expiration=expiration, strike=strike,
@@ -304,7 +310,7 @@ class ThetaOptionClient(_ThetaClient):
         self, symbol: str, expiration: DateValue, strike: PriceValue,
         right: OptionRight, start_date: DateValue, end_date: DateValue,
         time: TimeValue,
-    ) -> AsyncGenerator[OptionQuote, None]:
+    ) -> AsyncGenerator[Quote, None]:
         """
         Get quotes at a specific time of day for a range of days.
         """
@@ -323,7 +329,7 @@ class ThetaOptionClient(_ThetaClient):
     async def get_quote_at_time(
         self, symbol: str, expiration: DateValue, strike: PriceValue,
         right: OptionRight, time: DateTimeValue,
-    ) -> OptionQuote:
+    ) -> Quote:
         """
         Get an option quote at a given time.
         """
@@ -338,7 +344,7 @@ class ThetaOptionClient(_ThetaClient):
 
     async def get_all_quotes_at_time(
         self, symbol: str, expiration: DateValue, start_date: DateValue, end_date: DateValue, time: TimeValue,
-    ) -> AsyncGenerator[OptionQuote, None]:
+    ) -> AsyncGenerator[Quote, None]:
         """
         Get quotes at a specific time of day for all contracts for a range of
         days.
@@ -357,7 +363,7 @@ class ThetaOptionClient(_ThetaClient):
     async def _get_trades_at_time(
         self, symbol: str, expiration: DateValue, start_date: str, end_date: str, time: int,
         strike: Optional[PriceValue]=None, right: Optional[OptionRight]=None,
-    ) -> AsyncGenerator[OptionTrade, None]:
+    ) -> AsyncGenerator[Trade, None]:
 
         params, gen = self._get_at_time(
             request='trade', symbol=symbol, expiration=expiration, strike=strike,
@@ -405,7 +411,7 @@ class ThetaOptionClient(_ThetaClient):
 
     async def get_all_trades_at_time(
         self, symbol: str, expiration: DateValue, start_date: DateValue, end_date: DateValue, time: TimeValue,
-    ) -> AsyncGenerator[OptionQuote, None]:
+    ) -> AsyncGenerator[Quote, None]:
         """
         Get trades at a specific time of day for all contracts for a range of
         days.
@@ -424,7 +430,7 @@ class ThetaOptionClient(_ThetaClient):
     async def get_eod_report(
         self, symbol: str, expiration: DateValue, strike: PriceValue,
         right: OptionRight, date: DateValue,
-    ) -> OptionEodReport:
+    ) -> EodReport:
 
         report_date = format_date(date)
 
@@ -439,9 +445,9 @@ class ThetaOptionClient(_ThetaClient):
 
         result = (await self.get_data('hist/option/eod',  **params))[0]
         report = parse_eod_report(result)
-        self._populate_symbol_params(params, report)
+        self._populate_entity_params(params, report)
 
-        return OptionEodReport(**report)
+        return EodReport(**report)
 
 
 class ThetaStockClient(_ThetaClient):
@@ -468,29 +474,29 @@ class ThetaStockClient(_ThetaClient):
 
     async def _get_quotes_at_time(
         self, symbol: str, start_date: str, end_date: str, time: int,
-    ) -> AsyncGenerator[StockQuote, None]:
+    ) -> AsyncGenerator[Stock, None]:
 
         gen = self._get_at_time(
             request='quote', symbol=symbol, start_date=start_date, end_date=end_date, time=time,
         )
 
         async for row in gen:
-            yield StockQuote(symbol=symbol, **parse_quote_fields(row))
+            yield Quote(Stock.create(symbol=symbol), **parse_quote_fields(row))
 
     async def _get_trades_at_time(
         self, symbol: str, start_date: str, end_date: str, time: int,
-    ) -> AsyncGenerator[StockTrade, None]:
+    ) -> AsyncGenerator[Trade, None]:
 
         gen = self._get_at_time(
             request='trade', symbol=symbol, start_date=start_date, end_date=end_date, time=time,
         )
 
         async for row in gen:
-            yield StockTrade(symbol=symbol, **parse_trade_fields(row))
+            yield Trade(Stock.create(symbol=symbol), **parse_trade_fields(row))
 
     async def get_quotes_at_time(
         self, symbol: str, start_date: DateValue, end_date: DateValue, time: TimeValue,
-    ) -> AsyncGenerator[StockQuote, None]:
+    ) -> AsyncGenerator[Quote, None]:
         """
         Get quotes at a specific time of day for a range of days.
         """
@@ -505,7 +511,7 @@ class ThetaStockClient(_ThetaClient):
         async for quote in gen:
             yield quote
 
-    async def get_quote_at_time(self, symbol: str, time: DateTimeValue) -> StockQuote:
+    async def get_quote_at_time(self, symbol: str, time: DateTimeValue) -> Quote:
         """
         Get a stock quote at a given time.
         """
@@ -519,7 +525,7 @@ class ThetaStockClient(_ThetaClient):
 
     async def get_trades_at_time(
         self, symbol: str, start_date: DateValue, end_date: DateValue, time: TimeValue,
-    ) -> AsyncGenerator[StockTrade, None]:
+    ) -> AsyncGenerator[Trade, None]:
         """
         Get trades at a specific time of day for a range of days.
         """
@@ -534,7 +540,7 @@ class ThetaStockClient(_ThetaClient):
         async for trade in gen:
             yield trade
 
-    async def get_trade_at_time(self, symbol: str, time: DateTimeValue) -> StockTrade:
+    async def get_trade_at_time(self, symbol: str, time: DateTimeValue) -> Trade:
         """
         Get a stock trade at a given time.
         """
@@ -546,7 +552,7 @@ class ThetaStockClient(_ThetaClient):
 
         return await anext(gen)
 
-    async def get_eod_report(self, symbol: str, date: DateValue) -> StockEodReport:
+    async def get_eod_report(self, symbol: str, date: DateValue) -> EodReport:
 
         report_date = format_date(date)
 
@@ -559,7 +565,7 @@ class ThetaStockClient(_ThetaClient):
         result = (await self.get_data('hist/stock/eod',  **params))[0]
         report = parse_eod_report(result)
 
-        return StockEodReport(symbol=symbol, **report)
+        return EodReport(Stock.create(symbol=symbol), **report)
 
 
 class ThetaIndexClient(_ThetaClient):

@@ -1,3 +1,4 @@
+import enum
 import decimal
 import datetime
 from dataclasses import dataclass
@@ -12,14 +13,14 @@ __all__ = (
     'TimeValue',
     'DateTimeValue',
     'Quote',
-    'OptionQuote',
-    'StockQuote',
     'Trade',
-    'OptionTrade',
-    'StockTrade',
     'EodReport',
-    'OptionEodReport',
-    'StockEodReport',
+
+    'FinancialEntityType',
+    'FinancialEntity',
+    'Stock',
+    'Option',
+    'Index',
 )
 
 
@@ -36,9 +37,67 @@ TimeValue = Union[datetime.time, datetime.datetime]
 DateTimeValue = Union[datetime.datetime, str]
 
 
-@dataclass(slots=True, frozen=True)
-class Quote:
+class FinancialEntityType(enum.Enum):
+    STOCK = enum.auto()
+    OPTION = enum.auto()
+    INDEX = enum.auto()
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class FinancialEntity:
+    type: FinancialEntityType
     symbol: str
+
+    def __str__(self):
+        return f'{self.type.name}: {self.symbol}'
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class Option(FinancialEntity):
+    strike: decimal.Decimal
+    expiration: datetime.date
+    right: OptionRight
+
+    @classmethod
+    def create(cls, **kwargs):
+        return cls(type=FinancialEntityType.OPTION, **kwargs)
+
+    def __str__(self):
+        exp = self.expiration.strftime('%y%m%d')
+        return f'{self.type.name}: {self.symbol} {exp} ${self.strike} {self.right.name}'
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class Stock(FinancialEntity):
+
+    @classmethod
+    def create(cls, **kwargs):
+        return cls(type=FinancialEntityType.STOCK, **kwargs)
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class Index(FinancialEntity):
+
+    @classmethod
+    def create(cls, **kwargs):
+        return cls(type=FinancialEntityType.INDEX, **kwargs)
+
+
+@dataclass(slots=True, frozen=True)
+class BaseFinancialInfo:
+    entity: FinancialEntity
+
+    @property
+    def symbol(self) -> str:
+        return self.entity.symbol
+
+    @property
+    def type(self) -> FinancialEntityType:
+        return self.entity.type
+
+
+@dataclass(slots=True, frozen=True)
+class Quote(BaseFinancialInfo):
     time: datetime.datetime
 
     bid: decimal.Decimal
@@ -53,20 +112,7 @@ class Quote:
 
 
 @dataclass(slots=True, frozen=True)
-class OptionQuote(Quote):
-    strike: decimal.Decimal
-    expiration: datetime.date
-    right: OptionRight
-
-
-@dataclass(slots=True, frozen=True)
-class StockQuote(Quote):
-    pass
-
-
-@dataclass(slots=True, frozen=True)
-class Trade:
-    symbol: str
+class Trade(BaseFinancialInfo):
     time: datetime.datetime
 
     exchange: Exchange
@@ -82,20 +128,7 @@ class Trade:
 
 
 @dataclass(slots=True, frozen=True)
-class OptionTrade(Trade):
-    strike: decimal.Decimal
-    expiration: datetime.date
-    right: OptionRight
-
-
-@dataclass(slots=True, frozen=True)
-class StockTrade(Trade):
-    pass
-
-
-@dataclass(slots=True, frozen=True)
-class EodReport:
-    symbol: str
+class EodReport(BaseFinancialInfo):
     time: datetime.datetime
     last_trade: datetime.datetime
 
@@ -116,17 +149,3 @@ class EodReport:
 
     volume: int
     count: int
-
-
-# TODO: A lot of these might be nicer if symbol, strike, right are all in one
-# field. Then quote, trade, etc could be the same...
-@dataclass(slots=True, frozen=True)
-class OptionEodReport(EodReport):
-    strike: decimal.Decimal
-    expiration: datetime.date
-    right: OptionRight
-
-
-@dataclass(slots=True, frozen=True)
-class StockEodReport(EodReport):
-    pass

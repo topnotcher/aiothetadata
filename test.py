@@ -117,7 +117,7 @@ async def main():
         print()
         print('SPXW 20250221 quotes 2/20/2025 @ 10:00')
         async for quote in iter_condensed(quotes, 5):
-            print('\t', f'${quote.strike}', quote.right, str(quote.time), f'bid: ${quote.bid}', f'ask: ${quote.ask}')
+            print('\t', f'${quote.entity.strike}', quote.entity.right, str(quote.time), f'bid: ${quote.bid}', f'ask: ${quote.ask}')
 
         trades = client.option.get_all_trades_at_time(
             symbol='SPXW',
@@ -130,7 +130,7 @@ async def main():
         print()
         print('SPXW 20250221 trades 2/20/2025 @ 10:00')
         async for trade in iter_condensed(trades, 5):
-            print('\t', f'${trade.strike}', trade.right, trade.time, f'price: ${trade.price}', 'size:', trade.size)
+            print('\t', f'${trade.entity.strike}', trade.entity.right, trade.time, f'price: ${trade.price}', 'size:', trade.size)
 
         report = await client.option.get_eod_report(
             symbol='SPXW',
