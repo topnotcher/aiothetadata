@@ -132,6 +132,24 @@ async def main():
         async for trade in iter_condensed(trades, 5):
             print('\t', f'${trade.strike}', trade.right, trade.time, f'price: ${trade.price}', 'size:', trade.size)
 
+        report = await client.option.get_eod_report(
+            symbol='SPXW',
+            expiration=20250221,
+            strike=6000,
+            right=OptionRight.PUT,
+            date=datetime.date(2025, 2, 20),
+        )
+
+        print()
+        print('SPX 20250221 $6000 PUT quote EOD report on 2/20/2025')
+        print('\t', report)
+
+        report = await client.stock.get_eod_report('ZBRA', date=20250220)
+
+        print()
+        print('ZBRA EOD report on 2/20/2025')
+        print('\t', report)
+
 
 async def iter_condensed(gen, num):
     skipped = 0

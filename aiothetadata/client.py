@@ -240,10 +240,9 @@ class ThetaOptionClient(_ThetaClient):
             params['right'] = request['right']
 
         if 'strike' not in params:
-            params['strike'] = parse_strike(request)
+            params['strike'] = parse_strike(request['strike'])
 
-        # TODO: I might want to reconsider the fact that the parse_ functions take a dict.
-        params['expiration'] = parse_date({'date': request['exp']})
+        params['expiration'] = parse_date(request['exp'])
 
     def _make_quote(self, request: Dict[str, Any], response: Dict[str, Any]) -> OptionQuote:
         params = parse_quote_fields(response)
@@ -422,6 +421,28 @@ class ThetaOptionClient(_ThetaClient):
         async for trade in gen:
             yield trade
 
+    async def get_eod_report(
+        self, symbol: str, expiration: DateValue, strike: PriceValue,
+        right: OptionRight, date: DateValue,
+    ) -> OptionEodReport:
+
+        report_date = format_date(date)
+
+        params = {
+            'root': symbol,
+            'start_date': report_date,
+            'end_date': report_date,
+            'exp': format_date(expiration),
+            'strike': format_price(strike),
+            'right': right,
+        }
+
+        result = (await self.get_data('hist/option/eod',  **params))[0]
+        report = parse_eod_report(result)
+        self._populate_symbol_params(params, report)
+
+        return OptionEodReport(**report)
+
 
 class ThetaStockClient(_ThetaClient):
 
@@ -524,6 +545,21 @@ class ThetaStockClient(_ThetaClient):
         )
 
         return await anext(gen)
+
+    async def get_eod_report(self, symbol: str, date: DateValue) -> StockEodReport:
+
+        report_date = format_date(date)
+
+        params = {
+            'root': symbol,
+            'start_date': report_date,
+            'end_date': report_date,
+        }
+
+        result = (await self.get_data('hist/stock/eod',  **params))[0]
+        report = parse_eod_report(result)
+
+        return StockEodReport(symbol=symbol, **report)
 
 
 class ThetaIndexClient(_ThetaClient):

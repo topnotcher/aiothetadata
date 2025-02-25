@@ -30,20 +30,20 @@ async def test_iter_csv():
 
 
 def test_parse_date():
-    assert parse_date({'date': '20250211'}) == datetime.date(2025, 2, 11)
+    assert parse_date('20250211') == datetime.date(2025, 2, 11)
 
 
 def test_parse_time():
-    assert parse_time({'ms_of_day': 34513666}) == datetime.time(9, 35, 13, 666000)
+    assert parse_time(34513666) == datetime.time(9, 35, 13, 666000)
 
 
 def test_parse_date_time():
-    data = {
-        'ms_of_day': 34513666,
-        'date': '20250211',
-    }
-    expected = datetime.datetime.combine(parse_date(data), parse_time(data))
-    assert parse_date_time(data) == expected
+    data = (
+        '20250211',
+        34513666,
+    )
+    expected = datetime.datetime.combine(parse_date(data[0]), parse_time(data[1]))
+    assert parse_date_time(*data) == expected
 
 
 def test_parse_trade_fields():
@@ -111,3 +111,52 @@ def test_parse_quote_fields():
     }
 
     assert parse_quote_fields(raw) == parsed
+
+
+def test_parse_eod_report():
+    raw = {
+        'ms_of_day': '36000000',
+        'ms_of_day2': '36061000',
+
+        'bid_size': '169',
+        'bid_exchange': '5',
+        'bid': '5.0000',
+        'bid_condition': '50',
+        'ask_size': '30',
+        'ask_exchange': '5',
+        'ask': '5.2000',
+        'ask_condition': '50',
+        'date': '20250217',
+
+        'open': '13.37',
+        'high': '1337.13',
+        'low': '9.15',
+        'close': '100.12',
+        'volume': '1337',
+        'count': '10',
+    }
+    expected = {
+        'bid': Decimal('5.0000'),
+        'ask': Decimal('5.2000'),
+
+        'bid_size': 169,
+        'ask_size': 30,
+        'bid_condition': QuoteCondition.NATIONAL_BBO,
+        'ask_condition': QuoteCondition.NATIONAL_BBO,
+        'time': datetime.datetime(2025, 2, 17, 10, 0),
+        'bid_exchange': Exchange.CBOE,
+        'ask_exchange': Exchange.CBOE,
+
+        'last_trade': datetime.datetime(2025, 2, 17, 10, 1, 1),
+
+        'open': Decimal('13.37'),
+        'high': Decimal('1337.13'),
+        'low': Decimal('9.15'),
+        'close': Decimal('100.12'),
+        'volume': 1337,
+        'count': 10,
+    }
+
+    report = parse_eod_report(raw)
+
+    assert report == expected

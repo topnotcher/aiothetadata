@@ -14,6 +14,7 @@ __all__ = (
     'parse_quote_fields',
     'parse_trade_fields',
     'parse_strike',
+    'parse_eod_report',
 )
 
 
@@ -35,23 +36,23 @@ async def iter_csv(line_gen: AsyncGenerator[bytes, None]) -> AsyncGenerator[str,
             yield dict(zip(header, values))
 
 
-def parse_date(data: Dict[str, str]) -> _datetime.date:
+def parse_date(date: str) -> _datetime.date:
     """
     Parse a ``date`` out of the ``date`` field of a ThetaData response.
     """
-    year = int(data['date'][:4])
-    month = int(data['date'][4:6])
-    day = int(data['date'][6:8])
+    year = int(date[:4])
+    month = int(date[4:6])
+    day = int(date[6:8])
 
     return _datetime.date(year, month, day)
 
 
-def parse_time(data: Dict[str, str]) -> _datetime.time:
+def parse_time(time: str) -> _datetime.time:
     """
     Parse a time out of a the ``ms_of_day`` field of a ThetaData response. The
     returned ``time`` object will have the timezone set to eastern time.
     """
-    milliseconds = int(data['ms_of_day'])
+    milliseconds = int(time)
 
     args = {}
     conv = (
@@ -69,22 +70,22 @@ def parse_time(data: Dict[str, str]) -> _datetime.time:
     return _datetime.time(**args)
 
 
-def parse_date_time(data: Dict[str, str]) -> _datetime.datetime:
+def parse_date_time(date: str, time: str) -> _datetime.datetime:
     """
     Parse a date and time out of a ThetaData response. See :func:`~.parse_time`
     and :func:`~.parse_date`.
     """
     return _datetime.datetime.combine(
-        parse_date(data),
-        parse_time(data),
+        parse_date(date),
+        parse_time(time),
     )
 
 
-def parse_strike(data: Dict[str, Any]) -> decimal.Decimal:
+def parse_strike(strike: int | str) -> decimal.Decimal:
     """
     Parse the strike (``int`` or ``str``) in 1/10 cent into a decimal.
     """
-    return decimal.Decimal(data['strike']) / 1000
+    return decimal.Decimal(strike) / 1000
 
 
 def parse_quote_fields(data: Dict[str, str]) -> Dict[str, Any]:
@@ -97,7 +98,7 @@ def parse_quote_fields(data: Dict[str, str]) -> Dict[str, Any]:
         parsed[field] = decimal.Decimal(data[field])
 
     if 'strike' in data:
-        parsed['strike'] = parse_strike(data)
+        parsed['strike'] = parse_strike(data['strike'])
 
     if 'right' in data:
         parsed['right'] = OptionRight(data['right'])
@@ -111,8 +112,7 @@ def parse_quote_fields(data: Dict[str, str]) -> Dict[str, Any]:
     for field in ('bid_condition', 'ask_condition'):
         parsed[field] = QuoteCondition.from_code(int(data[field]))
 
-    if 'ms_of_day' in data and 'date' in data:
-        parsed['time'] = parse_date_time(data)
+    parsed['time'] = parse_date_time(data['date'], data['ms_of_day'])
 
     for field in ('bid_exchange', 'ask_exchange'):
         parsed[field] = Exchange(int(data[field]))
@@ -132,14 +132,13 @@ def parse_trade_fields(data: Dict[str, str]) -> Dict[str, Any]:
     for field in ('sequence', 'size', 'records_back'):
         parsed[field] = int(data[field])
 
-    if 'ms_of_day' in data and 'date' in data:
-        parsed['time'] = parse_date_time(data)
+    parsed['time'] = parse_date_time(data['date'], data['ms_of_day'])
 
     for field in ('exchange', ):
         parsed[field] = Exchange(int(data[field]))
 
     if 'strike' in data:
-        parsed['strike'] = parse_strike(data)
+        parsed['strike'] = parse_strike(data['strike'])
 
     if 'right' in data:
         parsed['right'] = OptionRight(data['right'])
@@ -155,5 +154,23 @@ def parse_trade_fields(data: Dict[str, str]) -> Dict[str, Any]:
             conditions.append(TradeCondition(value))
 
     parsed['conditions'] = tuple(conditions)
+
+    return parsed
+
+
+def parse_eod_report(data: Dict[str, str]) -> Dict[str, Any]:
+    """
+    Parse EOD report fields.
+    """
+    parsed = {}
+    parsed.update(parse_quote_fields(data))
+
+    for field in ('volume', 'count'):
+        parsed[field] = int(data[field])
+
+    for field in ('open', 'high', 'low', 'close'):
+        parsed[field] = decimal.Decimal(data[field])
+
+    parsed['last_trade'] = parse_date_time(data['date'], data['ms_of_day2'])
 
     return parsed

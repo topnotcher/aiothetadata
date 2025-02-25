@@ -17,6 +17,9 @@ __all__ = (
     'Trade',
     'OptionTrade',
     'StockTrade',
+    'EodReport',
+    'OptionEodReport',
+    'StockEodReport',
 )
 
 
@@ -87,4 +90,43 @@ class OptionTrade(Trade):
 
 @dataclass(slots=True, frozen=True)
 class StockTrade(Trade):
+    pass
+
+
+@dataclass(slots=True, frozen=True)
+class EodReport:
+    symbol: str
+    time: datetime.datetime
+    last_trade: datetime.datetime
+
+    bid: decimal.Decimal
+    bid_size: int
+    bid_exchange: Exchange
+    bid_condition: QuoteCondition
+
+    ask: decimal.Decimal
+    ask_size: int
+    ask_exchange: Exchange
+    ask_condition: QuoteCondition
+
+    open: decimal.Decimal
+    high: decimal.Decimal
+    low: decimal.Decimal
+    close: decimal.Decimal
+
+    volume: int
+    count: int
+
+
+# TODO: A lot of these might be nicer if symbol, strike, right are all in one
+# field. Then quote, trade, etc could be the same...
+@dataclass(slots=True, frozen=True)
+class OptionEodReport(EodReport):
+    strike: decimal.Decimal
+    expiration: datetime.date
+    right: OptionRight
+
+
+@dataclass(slots=True, frozen=True)
+class StockEodReport(EodReport):
     pass
