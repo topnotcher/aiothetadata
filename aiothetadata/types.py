@@ -63,7 +63,7 @@ class Option(FinancialEntity):
         return cls(type=FinancialEntityType.OPTION, **kwargs)
 
     def __str__(self):
-        exp = self.expiration.strftime('%y%m%d')
+        exp = self.expiration.strftime('%Y%m%d')
         return f'{self.type.name}: {self.symbol} {exp} ${self.strike} {self.right.name}'
 
 
