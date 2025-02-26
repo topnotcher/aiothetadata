@@ -37,6 +37,10 @@ def test_parse_time():
     assert parse_time(34513666) == datetime.time(9, 35, 13, 666000)
 
 
+def test_parse_time_too_big():
+    assert parse_time(86400000) == datetime.time(23, 59, 59, 999000)
+
+
 def test_parse_date_time():
     data = (
         '20250211',
@@ -160,3 +164,17 @@ def test_parse_eod_report():
     report = parse_eod_report(raw)
 
     assert report == expected
+
+
+def test_parse_index_price_report():
+    raw = {
+        'ms_of_day': '36000000',
+        'price': '313.3700',
+        'date': '20250217',
+    }
+    parsed = {
+        'price': Decimal('313.3700'),
+        'time': datetime.datetime(2025, 2, 17, 10, 0),
+    }
+
+    assert parse_index_price_report(raw) == parsed

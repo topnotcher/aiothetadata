@@ -15,6 +15,7 @@ __all__ = (
     'parse_trade_fields',
     'parse_strike',
     'parse_eod_report',
+    'parse_index_price_report',
 )
 
 
@@ -53,6 +54,10 @@ def parse_time(time: str) -> _datetime.time:
     returned ``time`` object will have the timezone set to eastern time.
     """
     milliseconds = int(time)
+
+    # I am getting index prices with 86400000. This makes no sense: there are
+    # 86400000ms in a day and they start at 0, thus have a maximum of 86399999.
+    milliseconds = min(milliseconds, 86399999)
 
     args = {}
     conv = (
@@ -174,3 +179,13 @@ def parse_eod_report(data: Dict[str, str]) -> Dict[str, Any]:
     parsed['last_trade'] = parse_date_time(data['date'], data['ms_of_day2'])
 
     return parsed
+
+
+def parse_index_price_report(data: Dict[str, str]) -> Dict[str, Any]:
+    """
+    Parse index price report fields.
+    """
+    return {
+        'price': decimal.Decimal(data['price']),
+        'time': parse_date_time(data['date'], data['ms_of_day']),
+    }

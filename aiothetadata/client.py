@@ -64,6 +64,12 @@ class _PagedRequest:
         except asyncio.CancelledError:
             pass
 
+        # TODO: can I move passing the URL/params into the task that calls this?
+        # Maybe a list instead of a generator...
+        except Exception:
+            log.exception('Error in paged request')
+            self.queue.shutdown()
+
     def get_next_page(self, resp) -> Optional[Coroutine[None, None, aiohttp.ClientResponse]]:
         if resp.status != 200:
             return None
@@ -610,7 +616,36 @@ class ThetaStockClient(_ThetaClient):
 
 
 class ThetaIndexClient(_ThetaClient):
-    pass
+
+    async def get_historical_prices(
+        self, symbol: str, start_date: DateValue, end_date: DateValue,
+        interval: Interval, hours: TradingHours=TradingHours.REGULAR,
+    ) -> AsyncGenerator[IndexPriceReport, None]:
+
+        params = {
+            'root': symbol,
+            'start_date': format_date(start_date),
+            'end_date': format_date(end_date),
+            'ivl': interval,
+            # TODO: add my own params serialization because I'm sick of this.
+            'rth': 'true' if (hours == TradingHours.REGULAR) else 'false',
+        }
+
+        # TODO: copied this from options. Need to come up with better numbers
+        # and generalize.
+        if interval <= 2 * 60:
+            split_days = self.date_range_params(3)
+
+        else:
+            split_days = self.date_range_params(7)
+
+        gen = self.stream_data('hist/index/price',  params_gen=split_days, **params)
+        async for data in gen:
+            parsed = parse_index_price_report(data)
+            # TODO: at least for SPX (not quoted off hours), I get $0 quotes
+            # starting at midnight.
+            if parsed['price'] != 0:
+                yield IndexPriceReport(entity=Index.create(symbol=symbol), **parsed)
 
 
 class ThetaClient:

@@ -5,6 +5,7 @@ from ._trade_conditions import _TRADE_CONDITIONS
 
 __all__ = (
     'OptionRight',
+    'TradingHours',
     'QuoteCondition',
     'Exchange',
     'TradeCondition',
@@ -17,7 +18,15 @@ class OptionRight(enum.StrEnum):
     PUT = 'P'
 
 
-class Interval(enum.Enum):
+class TradingHours(enum.Enum):
+    #: Regular trading hours: 0930 - 1600
+    REGULAR = enum.auto()
+
+    #: Extended trading hours: all day.
+    EXTENDED = enum.auto()
+
+
+class Interval(enum.IntEnum):
     TICK = 0
     MINUTE = 60000
     SECOND = 1000

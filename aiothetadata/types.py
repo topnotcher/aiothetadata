@@ -15,6 +15,7 @@ __all__ = (
     'Quote',
     'Trade',
     'EodReport',
+    'IndexPriceReport',
 
     'FinancialEntityType',
     'FinancialEntity',
@@ -149,3 +150,9 @@ class EodReport(BaseFinancialInfo):
 
     volume: int
     count: int
+
+
+@dataclass(slots=True, frozen=True)
+class IndexPriceReport(BaseFinancialInfo):
+    time: datetime.datetime
+    price: decimal.Decimal

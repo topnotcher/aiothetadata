@@ -1,13 +1,15 @@
 import asyncio
 import datetime
 import collections
+import logging
 
 from aiothetadata.client import ThetaClient
-from aiothetadata.constants import OptionRight
+from aiothetadata.constants import OptionRight, Interval, TradingHours
 from aiothetadata.datetime import date_at_time, date, MarketOpen, Minutes
 
 
 async def main():
+    logging.basicConfig(level=logging.DEBUG)
     async with ThetaClient() as client:
         quotes = client.option.get_quotes_at_time(
             symbol='SPXW',
@@ -166,6 +168,20 @@ async def main():
         print('SPXW 20250221 $6000 PUT quotes 2/17/2025 - 2/21/2025 @ 10:00 - 15:00')
         async for quote in iter_condensed(quotes, 5):
             print('\t', str(quote.time), 'bid:', quote.bid, 'ask:', quote.ask)
+
+
+        quotes = client.index.get_historical_prices(
+            symbol='SPX',
+            start_date=20250217,
+            end_date=20250221,
+            interval=Interval.FIFTEEN_MINUTES,
+            hours=TradingHours.REGULAR,
+        )
+
+        print()
+        print('SPX prices 2/17/2025 - 2/21/2025 15 minute RTH')
+        async for quote in iter_condensed(quotes, 5):
+            print('\t', str(quote.time), f'price: ${quote.price}')
 
 
 async def iter_condensed(gen, num):
