@@ -8,12 +8,21 @@ __all__ = (
     'QuoteCondition',
     'Exchange',
     'TradeCondition',
+    'Interval',
 )
 
 
 class OptionRight(enum.StrEnum):
     CALL = 'C'
     PUT = 'P'
+
+
+class Interval(enum.Enum):
+    TICK = 0
+    MINUTE = 60000
+    SECOND = 1000
+    FIVE_MINUTES = 300000
+    FIFTEEN_MINUTES = 900000
 
 
 class QuoteCondition(enum.IntEnum):

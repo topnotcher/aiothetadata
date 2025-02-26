@@ -150,6 +150,23 @@ async def main():
         print('ZBRA EOD report on 2/20/2025')
         print('\t', report)
 
+        quotes = client.option.get_historical_quotes(
+            symbol='SPXW',
+            expiration=20250221,
+            strike=6000,
+            right=OptionRight.PUT,
+            start_date=20250217,
+            end_date=20250221,
+            start_time='10:00:00',
+            end_time='15:00:00',
+            interval=900000,  # 15 minutes
+        )
+
+        print()
+        print('SPXW 20250221 $6000 PUT quotes 2/17/2025 - 2/21/2025 @ 10:00 - 15:00')
+        async for quote in iter_condensed(quotes, 5):
+            print('\t', str(quote.time), 'bid:', quote.bid, 'ask:', quote.ask)
+
 
 async def iter_condensed(gen, num):
     skipped = 0

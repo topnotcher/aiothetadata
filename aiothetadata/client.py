@@ -290,7 +290,17 @@ class ThetaOptionClient(_ThetaClient):
 
         return params, self.stream_data(get_type, 'option', request,  params_gen=split_days, **params)
 
-    async def _get_quotes_at_time(
+    async def _gen_quotes(
+        self, params: Dict[str, Any], gen: AsyncGenerator[Dict[str, str], None]
+    ) -> AsyncGenerator[Quote, None]:
+
+        async for row in gen:
+            # Looks like a weekend quote?
+            # 0,0,0,0.0000,0,0,0,0.0000,0,0
+            if row['date'] != '0':  # TODO: what are these???
+                yield self._make_quote(params, row)
+
+    def _get_quotes_at_time(
         self, symbol: str, expiration: DateValue, start_date: str, end_date: str, time: int,
         strike: Optional[PriceValue]=None, right: Optional[OptionRight]=None,
     ) -> AsyncGenerator[Quote, None]:
@@ -300,13 +310,9 @@ class ThetaOptionClient(_ThetaClient):
             right=right, start_date=start_date, end_date=end_date, time=time,
         )
 
-        async for row in gen:
-            # Looks like a weekend quote?
-            # 0,0,0,0.0000,0,0,0,0.0000,0,0
-            if row['date'] != '0':  # TODO: what are these???
-                yield self._make_quote(params, row)
+        return self._gen_quotes(params, gen)
 
-    async def get_quotes_at_time(
+    def get_quotes_at_time(
         self, symbol: str, expiration: DateValue, strike: PriceValue,
         right: OptionRight, start_date: DateValue, end_date: DateValue,
         time: TimeValue,
@@ -318,13 +324,10 @@ class ThetaOptionClient(_ThetaClient):
         end_date = format_date(end_date)
         time = format_time(time)
 
-        gen = self._get_quotes_at_time(
+        return self._get_quotes_at_time(
             symbol=symbol, expiration=expiration, strike=strike, right=right,
             start_date=start_date, end_date=end_date, time=time
         )
-
-        async for quote in gen:
-            yield quote
 
     async def get_quote_at_time(
         self, symbol: str, expiration: DateValue, strike: PriceValue,
@@ -342,7 +345,7 @@ class ThetaOptionClient(_ThetaClient):
 
         return await anext(gen)
 
-    async def get_all_quotes_at_time(
+    def get_all_quotes_at_time(
         self, symbol: str, expiration: DateValue, start_date: DateValue, end_date: DateValue, time: TimeValue,
     ) -> AsyncGenerator[Quote, None]:
         """
@@ -353,12 +356,9 @@ class ThetaOptionClient(_ThetaClient):
         end_date = format_date(end_date)
         time = format_time(time)
 
-        gen = self._get_quotes_at_time(
+        return self._get_quotes_at_time(
             symbol=symbol, expiration=expiration, start_date=start_date, end_date=end_date, time=time
         )
-
-        async for quote in gen:
-            yield quote
 
     async def _get_trades_at_time(
         self, symbol: str, expiration: DateValue, start_date: str, end_date: str, time: int,
@@ -373,7 +373,7 @@ class ThetaOptionClient(_ThetaClient):
         async for row in gen:
             yield self._make_trade(params, row)
 
-    async def get_trades_at_time(
+    def get_trades_at_time(
         self, symbol: str, expiration: DateValue, strike: PriceValue,
         right: OptionRight, start_date: DateValue, end_date: DateValue,
         time: TimeValue,
@@ -385,13 +385,10 @@ class ThetaOptionClient(_ThetaClient):
         end_date = format_date(end_date)
         time = format_time(time)
 
-        gen = self._get_trades_at_time(
+        return self._get_trades_at_time(
             symbol=symbol, expiration=expiration, strike=strike, right=right,
             start_date=start_date, end_date=end_date, time=time
         )
-
-        async for trade in gen:
-            yield trade
 
     async def get_trade_at_time(
         self, symbol: str, expiration: DateValue, strike: PriceValue,
@@ -409,7 +406,7 @@ class ThetaOptionClient(_ThetaClient):
 
         return await anext(gen)
 
-    async def get_all_trades_at_time(
+    def get_all_trades_at_time(
         self, symbol: str, expiration: DateValue, start_date: DateValue, end_date: DateValue, time: TimeValue,
     ) -> AsyncGenerator[Quote, None]:
         """
@@ -420,12 +417,9 @@ class ThetaOptionClient(_ThetaClient):
         end_date = format_date(end_date)
         time = format_time(time)
 
-        gen = self._get_trades_at_time(
+        return self._get_trades_at_time(
             symbol=symbol, expiration=expiration, start_date=start_date, end_date=end_date, time=time
         )
-
-        async for trade in gen:
-            yield trade
 
     async def get_eod_report(
         self, symbol: str, expiration: DateValue, strike: PriceValue,
@@ -448,6 +442,53 @@ class ThetaOptionClient(_ThetaClient):
         self._populate_entity_params(params, report)
 
         return EodReport(**report)
+
+    def get_historical_quotes(
+        self, symbol: str, expiration: DateValue, strike: PriceValue,
+        right: OptionRight, start_date: DateValue, end_date: DateValue,
+        start_time: TimeValue, end_time: TimeValue, interval: int | Interval,
+    ) -> AsyncGenerator[Quote, None]:
+        """
+        Get all quotes for the specified instrument in a given time range for a
+        range of days.
+
+        :param symbol: The symbol.
+        :param expiration: The option expiration.
+        :param strike: The option strike.
+        :param right: The option right.
+        :param start_date: The first date to get quotes for.
+        :param end_date: The last date to get quotes for.
+        :param start_time: The starting time to get quotes for.
+        :param end_time: The starting time to get quotes for.
+        :param interval: The interval apart, in milliseconds, to get quotes
+            for. Use :attr:`~.Interval.TICK` for tick-level quotes.
+        """
+        params = {
+            'root': symbol,
+            'exp': format_date(expiration),
+            'strike': format_price(strike),
+            'right': right,
+            'start_date': format_date(start_date),
+            'end_date': format_date(end_date),
+            'start_time': format_time(start_time),
+            'end_time': format_time(end_time),
+            'ivl': interval,
+
+            # TODO: Does rth matter? The user is specifying a time range.
+            'rth': 'false'
+        }
+
+        # TODO: for tick level, docs suggest 1 week or 7 days for higher
+        # activity tickers. I could probabably base this on the time range as
+        # well as the interval.
+        if interval <= 2 * 60:
+            split_days = self.date_range_params(3)
+
+        else:
+            split_days = self.date_range_params(7)
+
+        gen = self.stream_data('hist/option/quote', params_gen=split_days, **params)
+        return self._gen_quotes(params, gen)
 
 
 class ThetaStockClient(_ThetaClient):
