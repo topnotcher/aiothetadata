@@ -1,5 +1,6 @@
 import decimal
 import datetime
+import csv
 from typing import Dict, AsyncGenerator, Any
 
 from . import datetime as _datetime
@@ -32,7 +33,7 @@ async def iter_csv(line_gen: AsyncGenerator[bytes, None]) -> AsyncGenerator[str,
         if not line:
             continue
 
-        values = line.split(',')
+        values = next(csv.reader([line]))
 
         if header is None:
             header = values

@@ -10,8 +10,8 @@ from aiothetadata.constants import *
 async def test_iter_csv():
     async def line_gen():
         yield b'foo,bar'
-        yield b'baz,qux'
-        yield b'abc,123'
+        yield b'"baz",qux'
+        yield b'abc,"123"'
 
     gen = iter_csv(line_gen())
 
