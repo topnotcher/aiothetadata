@@ -157,16 +157,10 @@ def parse_trade_fields(data: Dict[str, str]) -> Dict[str, Any]:
         parsed['strike'] = parse_strike(data['strike'])
 
     if 'right' in data:
-        right_str = data['right'].strip('"').upper()
-        if right_str == 'PUT':
-            parsed['right'] = OptionRight.PUT
-        elif right_str == 'CALL':
-            parsed['right'] = OptionRight.CALL
-        else:
-            parsed['right'] = OptionRight(right_str)
+        parsed['right'] = OptionRight(data['right'])
 
     if 'symbol' in data:
-        parsed['symbol'] = data['symbol'].strip('"')
+        parsed['symbol'] = data['symbol']
 
     conditions = []
     condition_fields = ('condition', 'ext_condition1', 'ext_condition2', 'ext_condition3', 'ext_condition4')
@@ -242,17 +236,10 @@ def parse_quote_fields(data: Dict[str, str]) -> Dict[str, Any]:
         parsed['strike'] = parse_strike(data['strike'])
 
     if 'right' in data:
-        # v3 returns "PUT" or "CALL" (quoted), map to 'P' or 'C'
-        right_str = data['right'].strip('"').upper()
-        if right_str == 'PUT':
-            parsed['right'] = OptionRight.PUT
-        elif right_str == 'CALL':
-            parsed['right'] = OptionRight.CALL
-        else:
-            parsed['right'] = OptionRight(right_str)
+        parsed['right'] = OptionRight(data['right'])
 
     if 'symbol' in data:
-        parsed['symbol'] = data['symbol'].strip('"')
+        parsed['symbol'] = data['symbol']
 
     for field in ('bid_size', 'ask_size'):
         parsed[field] = int(data[field])

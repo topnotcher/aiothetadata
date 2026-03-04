@@ -56,8 +56,8 @@ def test_parse_trade_fields():
         'exchange': '5',
         'price': '4.6500',
         'strike': '123.456',
-        'right': '"CALL"',
-        'symbol': '"SPX"',
+        'right': 'CALL',
+        'symbol': 'SPX',
     }
     parsed = {
         'price': Decimal('4.6500'),
@@ -86,8 +86,8 @@ def test_parse_quote_fields():
         'ask': '5.2000',
         'ask_condition': '50',
         'strike': '123.456',
-        'right': '"CALL"',
-        'symbol': '"SPX"',
+        'right': 'CALL',
+        'symbol': 'SPX',
     }
     parsed = {
         'bid': Decimal('5.0000'),
@@ -127,9 +127,9 @@ def test_parse_eod_report():
         'close': '100.12',
         'volume': '1337',
         'count': '10',
-        'symbol': '"SPX"',
+        'symbol': 'SPX',
         'strike': '123.456',
-        'right': '"CALL"',
+        'right': 'CALL',
     }
     expected = {
         'bid': Decimal('5.0000'),

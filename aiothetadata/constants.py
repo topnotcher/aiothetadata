@@ -16,8 +16,8 @@ __all__ = (
 
 
 class OptionRight(enum.StrEnum):
-    CALL = 'C'
-    PUT = 'P'
+    CALL = 'CALL'
+    PUT = 'PUT'
 
 
 class TradingHours(enum.Enum):

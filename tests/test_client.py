@@ -160,7 +160,7 @@ class TestThetaClient(BaseThetaClientTest):
             'symbol': '"SPXW"',
             'expiration': '2024-03-15',
             'strike': '6000.000',
-            'right': '"PUT"',
+            'right': 'PUT',
             'timestamp': '2025-02-17T10:00:00',
             'bid_size': '169',
             'bid_exchange': '5',
@@ -218,7 +218,7 @@ class TestThetaOptionClient(BaseThetaClientTest):
 
     async def test_null_quote(self):
         quote_data = [
-            '"SPXW","2024-03-15",6000.000,"PUT",2025-02-19T10:00:00,1,1,325.3600,0,2,1,326.2800,0'
+            '"SPXW","2024-03-15",6000.000,PUT,2025-02-19T10:00:00,1,1,325.3600,0,2,1,326.2800,0'
         ]
 
         async def get_quotes(request):
@@ -243,7 +243,7 @@ class TestThetaOptionClient(BaseThetaClientTest):
 
     async def test_get_quote_at_time(self):
         quote_data = [
-            '"SPXW","2024-03-15",6000.000,"CALL",2025-02-19T10:00:00,1,1,325.3600,0,2,3,326.2800,1'
+            'SPXW,2024-03-15,6000.000,CALL,2025-02-19T10:00:00,1,1,325.3600,0,2,3,326.2800,1'
         ]
 
         async def get_quotes(request):
@@ -266,7 +266,7 @@ class TestThetaOptionClient(BaseThetaClientTest):
             'symbol': 'SPXW',
             'strike': '6000',
             'expiration': '20240315',
-            'right': 'P',
+            'right': 'PUT',
             'start_date': '20240301',
             'end_date': '20240301',
             'time_of_day': '10:00:00.000',
@@ -293,7 +293,7 @@ class TestThetaOptionClient(BaseThetaClientTest):
 
     async def test_get_quote_at_time_time_formats(self):
         quote_data = [
-            '"SPXW","2024-03-15",6000.000,"CALL",2025-02-19T10:00:00,1,1,325.3600,0,2,3,326.2800,1'
+            'SPXW,2024-03-15,6000.000,CALL,2025-02-19T10:00:00,1,1,325.3600,0,2,3,326.2800,1'
         ]
 
         async def get_quotes(request):
@@ -325,7 +325,7 @@ class TestThetaOptionClient(BaseThetaClientTest):
 
     async def test_get_quotes_at_time(self):
         quote_data = [
-            '"SPXW","2024-03-15",6000.000,"CALL",2025-02-19T10:00:00,1,1,325.3600,0,2,3,326.2800,1'
+            'SPXW,2024-03-15,6000.000,CALL,2025-02-19T10:00:00,1,1,325.3600,0,2,3,326.2800,1'
         ]
 
         async def get_quotes(request):
@@ -351,7 +351,7 @@ class TestThetaOptionClient(BaseThetaClientTest):
             'symbol': 'SPXW',
             'strike': '6000',
             'expiration': '20240315',
-            'right': 'C',
+            'right': 'CALL',
             'start_date': '20240211',
             'end_date': '20240221',
             'time_of_day': '10:01:13.000',
@@ -361,12 +361,12 @@ class TestThetaOptionClient(BaseThetaClientTest):
 
     async def test_get_all_quotes_at_time(self):
         quote_data = [
-            '"SPX","2025-02-21",2000.000,"CALL",2025-02-20T10:00:00,1,5,5892.30,50,1,5,5909.20,50',
-            '"SPX","2025-02-21",2000.000,"PUT",2025-02-20T10:00:00,0,5,0.00,50,527,5,0.05,50',
-            '"SPX","2025-02-21",4000.000,"CALL",2025-02-20T10:00:00,1,5,5692.20,50,1,5,5708.70,50',
-            '"SPX","2025-02-21",4000.000,"PUT",2025-02-20T10:00:00,0,5,0.00,50,525,5,0.05,50',
-            '"SPX","2025-02-21",6000.000,"CALL",2025-02-20T10:00:00,1,5,5492.30,50,1,5,5509.00,50',
-            '"SPX","2025-02-21",6000.000,"PUT",2025-02-20T10:00:00,0,5,0.00,50,525,5,0.05,50',
+            'SPX,2025-02-21,2000.000,CALL,2025-02-20T10:00:00,1,5,5892.30,50,1,5,5909.20,50',
+            'SPX,2025-02-21,2000.000,PUT,2025-02-20T10:00:00,0,5,0.00,50,527,5,0.05,50',
+            'SPX,2025-02-21,4000.000,CALL,2025-02-20T10:00:00,1,5,5692.20,50,1,5,5708.70,50',
+            'SPX,2025-02-21,4000.000,PUT,2025-02-20T10:00:00,0,5,0.00,50,525,5,0.05,50',
+            'SPX,2025-02-21,6000.000,CALL,2025-02-20T10:00:00,1,5,5492.30,50,1,5,5509.00,50',
+            'SPX,2025-02-21,6000.000,PUT,2025-02-20T10:00:00,0,5,0.00,50,525,5,0.05,50',
         ]
 
         async def get_quotes(request):
@@ -402,10 +402,10 @@ class TestThetaOptionClient(BaseThetaClientTest):
 
     async def test_get_trades_at_time(self):
         trade_data = [
-            '"SPXW","2024-03-15",6000.000,"CALL",2025-02-18T09:59:56.864,758,32,255,255,115,115,2,57,321.8150',
-            '"SPXW","2024-03-15",6000.000,"CALL",2025-02-19T09:59:58.844,55,32,95,255,115,115,20,3,325.8000',
-            '"SPXW","2024-03-15",6000.000,"CALL",2025-02-20T09:59:57.876,423,32,255,255,115,115,1,57,322.4854',
-            '"SPXW","2024-03-15",6000.000,"CALL",2025-02-21T09:59:57.442,357,32,255,255,115,115,5,57,318.6300',
+            'SPXW,2024-03-15,6000.000,CALL,2025-02-18T09:59:56.864,758,32,255,255,115,115,2,57,321.8150',
+            'SPXW,2024-03-15,6000.000,CALL,2025-02-19T09:59:58.844,55,32,95,255,115,115,20,3,325.8000',
+            'SPXW,2024-03-15,6000.000,CALL,2025-02-20T09:59:57.876,423,32,255,255,115,115,1,57,322.4854',
+            'SPXW,2024-03-15,6000.000,CALL,2025-02-21T09:59:57.442,357,32,255,255,115,115,5,57,318.6300',
         ]
 
         async def get_trades(request):
@@ -434,7 +434,7 @@ class TestThetaOptionClient(BaseThetaClientTest):
             'symbol': 'SPXW',
             'strike': '6000',
             'expiration': '20240315',
-            'right': 'C',
+            'right': 'CALL',
             'start_date': '20240211',
             'end_date': '20240221',
             'time_of_day': '10:01:13.000',
