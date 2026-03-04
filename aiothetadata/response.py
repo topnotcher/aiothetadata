@@ -120,7 +120,7 @@ def parse_quote_fields(data: Dict[str, str]) -> Dict[str, Any]:
         parsed['right'] = OptionRight(data['right'])
 
     if 'symbol' in data:
-        parsed['symbol'] = symbol['root']
+        parsed['symbol'] = data['symbol']
 
     for field in ('bid_size', 'ask_size'):
         parsed[field] = int(data[field])
