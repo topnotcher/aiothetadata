@@ -17,7 +17,7 @@ __all__ = (
     'parse_strike',
     'parse_eod_report',
     'parse_index_price_report',
-    'parse_greeks',
+    'parse_first_order_greeks',
 )
 
 
@@ -262,22 +262,25 @@ def parse_quote_fields(data: Dict[str, str]) -> Dict[str, Any]:
     return parsed
 
 
-def parse_greeks(data: Dict[str, str]) -> Dict[str, Any]:
-    """
-    Parse greeks fields from API responses.
+def parse_first_order_greeks(data: Dict[str, str]) -> Dict[str, Any]:
+    """Parse first-order greeks fields from a ``greeks_first_order`` API response.
+
+    :param data: Raw response row as a string-to-string mapping.
+    :returns: Parsed field dict suitable for constructing a
+        :class:`~aiothetadata.types.FirstOrderGreeks`.
     """
     parsed = {}
 
-    # Parse underlying price and timestamp
+    parsed['time'] = parse_timestamp(data['timestamp'])
     parsed['underlying_price'] = decimal.Decimal(data['underlying_price'])
 
-    if 'timestamp' in data:
-        parsed['time'] = parse_timestamp(data['timestamp'])
+    # implied_vol in the API maps to iv in the type; lambda is a Python reserved word.
+    parsed['iv'] = decimal.Decimal(data['implied_vol'])
+    parsed['leverage'] = decimal.Decimal(data['lambda'])
 
-    elif 'quote_timestamp' in data:
-        parsed['time'] = parse_timestamp(data['quote_timestamp'])
+    for field in ('delta', 'theta', 'vega', 'rho', 'epsilon', 'iv_error', 'bid', 'ask'):
+        parsed[field] = decimal.Decimal(data[field])
 
-    # Parse option entity fields
     if 'strike' in data:
         parsed['strike'] = parse_strike(data['strike'])
 
@@ -286,17 +289,5 @@ def parse_greeks(data: Dict[str, str]) -> Dict[str, Any]:
 
     if 'symbol' in data:
         parsed['symbol'] = data['symbol']
-
-    # Parse greeks values (use 0 for missing fields)
-    for field in ('iv', 'delta', 'gamma', 'theta', 'vega', 'rho',
-                  'vanna', 'charm', 'vomma', 'veta', 'speed', 'zomma', 'color', 'ultima'):
-        if field in data and data[field]:
-            try:
-                parsed[field] = decimal.Decimal(data[field])
-
-            except (ValueError, decimal.InvalidOperation):
-                parsed[field] = decimal.Decimal('0')
-        else:
-            parsed[field] = decimal.Decimal('0')
 
     return parsed

@@ -2,7 +2,7 @@ import enum
 import decimal
 import datetime
 from dataclasses import dataclass
-from typing import Union, Tuple
+from typing import Optional, Union, Tuple
 
 from .constants import Exchange, QuoteCondition, TradeCondition, OptionRight
 
@@ -16,7 +16,7 @@ __all__ = (
     'Trade',
     'EodReport',
     'IndexPriceReport',
-    'Greeks',
+    'FirstOrderGreeks',
 
     'FinancialEntityType',
     'FinancialEntity',
@@ -159,29 +159,32 @@ class IndexPriceReport(BaseFinancialInfo):
 
 
 @dataclass(slots=True, frozen=True)
-class Greeks(BaseFinancialInfo):
-    """Option greeks at a specific point in time."""
+class FirstOrderGreeks(BaseFinancialInfo):
+    """First-order option greeks from the ``greeks_first_order`` endpoint.
+
+    :param time: Timestamp of the greeks calculation.
+    :param underlying_price: Underlying price used for the calculation.
+    :param iv: Implied volatility.
+    :param iv_error: Model error on the implied volatility calculation.
+    :param delta: Rate of change of option price with respect to underlying price.
+    :param theta: Rate of change of option price with respect to time.
+    :param vega: Rate of change of option price with respect to volatility.
+    :param rho: Rate of change of option price with respect to interest rate.
+    :param epsilon: Rate of change of option price with respect to dividend yield.
+    :param leverage: Option leverage (``lambda`` in ThetaData; Python reserved keyword).
+    :param bid: Current bid price of the option.
+    :param ask: Current ask price of the option.
+    """
+
     time: datetime.datetime
     underlying_price: decimal.Decimal
-    
-    # Implied volatility
     iv: decimal.Decimal
-    
-    # First order greeks
+    iv_error: decimal.Decimal
     delta: decimal.Decimal
-    gamma: decimal.Decimal
     theta: decimal.Decimal
     vega: decimal.Decimal
     rho: decimal.Decimal
-    
-    # Second order greeks (optional, not always provided)
-    vanna: decimal.Decimal = decimal.Decimal('0')
-    charm: decimal.Decimal = decimal.Decimal('0')
-    vomma: decimal.Decimal = decimal.Decimal('0')
-    veta: decimal.Decimal = decimal.Decimal('0')
-    speed: decimal.Decimal = decimal.Decimal('0')
-    zomma: decimal.Decimal = decimal.Decimal('0')
-    color: decimal.Decimal = decimal.Decimal('0')
-    
-    # Third order greeks (optional)
-    ultima: decimal.Decimal = decimal.Decimal('0')
+    epsilon: decimal.Decimal
+    leverage: decimal.Decimal
+    bid: decimal.Decimal
+    ask: decimal.Decimal

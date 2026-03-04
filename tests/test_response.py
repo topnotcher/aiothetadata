@@ -172,3 +172,44 @@ def test_parse_index_price_report():
     }
 
     assert parse_index_price_report(raw) == parsed
+
+
+def test_parse_first_order_greeks():
+    # Field names and values taken from a live greeks_first_order response.
+    raw = {
+        'timestamp': '2026-03-04T08:49:44.910',
+        'underlying_price': '6816.6300',
+        'underlying_timestamp': '2026-03-03T16:03:53',
+        'implied_vol': '0.1711',
+        'iv_error': '0.0000',
+        'delta': '-0.5588',
+        'theta': '-3.8653',
+        'vega': '398.2166',
+        'rho': '-85.3322',
+        'epsilon': '83.4944',
+        'lambda': '-45.4320',
+        'bid': '83.4000',
+        'ask': '84.3000',
+        'strike': '6850.000',
+        'right': 'PUT',
+        'symbol': 'SPXW',
+    }
+    expected = {
+        'time': datetime.datetime(2026, 3, 4, 8, 49, 44, 910000, tzinfo=datetime.MarketTimeZone),
+        'underlying_price': Decimal('6816.6300'),
+        'iv': Decimal('0.1711'),
+        'iv_error': Decimal('0.0000'),
+        'delta': Decimal('-0.5588'),
+        'theta': Decimal('-3.8653'),
+        'vega': Decimal('398.2166'),
+        'rho': Decimal('-85.3322'),
+        'epsilon': Decimal('83.4944'),
+        'leverage': Decimal('-45.4320'),
+        'bid': Decimal('83.4000'),
+        'ask': Decimal('84.3000'),
+        'strike': Decimal('6850.000'),
+        'right': OptionRight.PUT,
+        'symbol': 'SPXW',
+    }
+
+    assert parse_first_order_greeks(raw) == expected
