@@ -516,34 +516,34 @@ class ThetaOptionClient(_ThetaClient):
     ) -> AsyncGenerator['Greeks', None]:
         """
         Get first-order greeks snapshot for option contracts.
-        
+
         If strike and right are specified, returns greeks for that specific contract.
         If omitted, returns greeks for all contracts with the given expiration.
-        
+
         Args:
             symbol: Underlying symbol (e.g., 'SPXW')
             expiration: Expiration date
             strike: Strike price (optional, for specific contract)
             right: Option right (optional, for specific contract)
-        
+
         Yields:
             Greeks objects
         """
         from .types import Greeks
-        
+
         params = {
             'symbol': symbol,
             'expiration': format_date(expiration),
         }
-        
+
         if strike is not None:
             params['strike'] = format_price(strike)
-        
+
         if right is not None:
             params['right'] = right
-        
+
         gen = self.stream_data('option', 'snapshot', 'greeks_first_order', **params)
-        
+
         async for row in gen:
             parsed = parse_greeks(row)
             self._populate_entity_params(params, parsed)
@@ -555,13 +555,13 @@ class ThetaOptionClient(_ThetaClient):
     ) -> 'Greeks':
         """
         Get greeks for a specific option contract.
-        
+
         Args:
             symbol: Underlying symbol
             expiration: Expiration date
             strike: Strike price
             right: Option right (CALL or PUT)
-        
+
         Returns:
             Greeks object
         """
