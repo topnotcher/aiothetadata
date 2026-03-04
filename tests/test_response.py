@@ -23,6 +23,7 @@ async def test_iter_csv():
 
 def test_parse_date():
     assert parse_date('20250221') == datetime.date(2025, 2, 21)
+    assert parse_date('2025-02-21') == datetime.date(2025, 2, 21)
 
 
 def test_parse_time():

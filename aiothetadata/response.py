@@ -45,9 +45,15 @@ def parse_date(date: str) -> _datetime.date:
     """
     Parse a ``date`` out of the ``date`` field of a ThetaData response.
     """
-    year = int(date[:4])
-    month = int(date[4:6])
-    day = int(date[6:8])
+    # TODO: Why are some of these in YYYY-MM-DD format and some in YYYYMMDD
+    # format. It's past bedtime and I'm not figuring that out now.
+    if '-' in date:
+        year, month, day = (int(x) for x in date.split('-'))
+
+    else:
+        year = int(date[:4])
+        month = int(date[4:6])
+        day = int(date[6:8])
 
     return _datetime.date(year, month, day)
 
