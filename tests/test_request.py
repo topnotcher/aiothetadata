@@ -12,13 +12,13 @@ Singapore = zoneinfo.ZoneInfo('Singapore')
 
 
 PRICES = [
-    (1337, 1337000),
-    ('13.37', 13370),
-    (13.37, 13370),
-    (13.01 + .01 + .01, 13030),
-    (decimal.Decimal('13.37'), 13370),
-    (decimal.Decimal('13.3754'), 13375),
-    (decimal.Decimal('13.3755'), 13376),
+    (1337, '1337'),
+    ('13.37', '13.370'),
+    (13.37, '13.37'),
+    (13.01 + .01 + .01, '13.03'),
+    (decimal.Decimal('13.37'), '13.370'),
+    (decimal.Decimal('13.3754'), '13.375'),
+    (decimal.Decimal('13.3755'), '13.376'),
 ]
 @pytest.mark.parametrize('value,result', PRICES)
 def test_format_price(value, result):
@@ -43,18 +43,18 @@ def test_format_date_invalid():
 
 
 TIMES = [
-    ('13:37:13', (13 * 3600 + 60 * 37 + 13) * 1000),
+    ('13:37:13', '13:37:13.000'),
     (
         datetime.datetime(year=2025, month=2, day=11, hour=13, minute=37, second=13, microsecond=313000),
-        (13 * 3600 + 60 * 37 + 13) * 1000 + 313
+        '13:37:13.313'
     ),
     (
         datetime.time(hour=13, minute=37, second=13, microsecond=313000),
-        (13 * 3600 + 60 * 37 + 13) * 1000 + 313
+        '13:37:13.313'
     ),
     (
         datetime.time(hour=13, minute=37, second=13, microsecond=313000, tzinfo=MarketTimeZone),
-        (13 * 3600 + 60 * 37 + 13) * 1000 + 313
+        '13:37:13.313'
     )
 ]
 @pytest.mark.parametrize('value,result', TIMES)

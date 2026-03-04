@@ -32,7 +32,7 @@ PriceValue = Union[decimal.Decimal, int, str]
 DateValue = Union[int, str, datetime.date, datetime.datetime]
 
 #: A value that represents a time. See :func:`~.format_time`.
-TimeValue = Union[datetime.time, datetime.datetime]
+TimeValue = Union[datetime.time, datetime.datetime, str]
 
 #: A value that represents a date and time. See :func:`~.format_date_time`.
 DateTimeValue = Union[datetime.datetime, str]
@@ -121,7 +121,6 @@ class Trade(BaseFinancialInfo):
     price: decimal.Decimal
     sequence: int
     size: int
-    records_back: int
 
     @property
     def condition(self) -> QuoteCondition:

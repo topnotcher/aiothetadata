@@ -26,12 +26,120 @@ class TradingHours(enum.Enum):
     EXTENDED = enum.auto()
 
 
-class Interval(enum.IntEnum):
-    TICK = 0
-    MINUTE = 60000
-    SECOND = 1000
-    FIVE_MINUTES = 300000
-    FIFTEEN_MINUTES = 900000
+class Interval(enum.StrEnum):
+    TICK = 'tick'
+    TEN_MS = '10ms'
+    ONE_HUNDRED_MS = '100ms'
+    FIVE_HUNDRED_MS = '500ms'
+    ONE_SECOND = '1s'
+    SECOND = '1s'
+    FIVE_SECONDS = '5s'
+    TEN_SECONDS = '10s'
+    FIFTEEN_SECONDS = '15s'
+    THIRTY_SECONDS = '30s'
+    ONE_MINUTE = '1m'
+    MINUTE = '1m'
+    FIVE_MINUTES = '5m'
+    TEN_MINUTES = '10m'
+    FIFTEEN_MINUTES = '15m'
+    THIRTY_MINUTES = '30m'
+    ONE_HOUR = '1h'
+
+    def to_milliseconds(self):
+        """
+        Get the number of milliseconds corresponding to this interval.
+        """
+        values = {
+            self.TICK: 0,
+            self.TEN_MS: 10,
+            self.ONE_HUNDRED_MS: 100,
+            self.FIVE_HUNDRED_MS: 500,
+            self.ONE_SECOND: 1000,
+            self.FIVE_SECONDS: 5000,
+            self.TEN_SECONDS: 10000,
+            self.FIFTEEN_SECONDS: 15000,
+            self.THIRTY_SECONDS: 30000,
+            self.ONE_MINUTE: 60000,
+            self.FIVE_MINUTES: 300000,
+            self.TEN_MINUTES: 600000,
+            self.FIFTEEN_MINUTES: 900000,
+            self.THIRTY_MINUTES: 1800000,
+            self.ONE_HOUR: 3600000,
+        }
+
+        return values[self]
+
+    @classmethod
+    def parse(cls, value: str | int | 'Interval') -> 'Interval':
+        """
+        Parse a string or integer (milliseconds) into an ``Interval``.
+
+        :param interval: An interval specified as a string (e.g., "1m", "15m", "tick"), an
+            :class:`~.Interval` enum member, or an integer number of milliseconds.
+        :return: :class:`~.Interval` instance corresponding to the given string
+            or integer, or the original value if it is already an
+            :class:`~.Interval` instance.
+        """
+        if isinstance(value, cls):
+            return value
+
+        if isinstance(value, str):
+            return cls(value)
+
+        if isinstance(value, int):
+            return cls.from_milliseconds(value)
+
+        raise ValueError(f'Invalid interval: {value}')
+
+    @classmethod
+    def from_milliseconds(cls, ms: int) -> 'Interval':
+        """
+        Get the interval corresponding to the given number of milliseconds.
+        """
+        values = {
+            10: cls.TEN_MS,
+            100: cls.ONE_HUNDRED_MS,
+            500: cls.FIVE_HUNDRED_MS,
+            1000: cls.ONE_SECOND,
+            5000: cls.FIVE_SECONDS,
+            10000: cls.TEN_SECONDS,
+            15000: cls.FIFTEEN_SECONDS,
+            30000: cls.THIRTY_SECONDS,
+            60000: cls.ONE_MINUTE,
+            300000: cls.FIVE_MINUTES,
+            600000: cls.TEN_MINUTES,
+            900000: cls.FIFTEEN_MINUTES,
+            1800000: cls.THIRTY_MINUTES,
+            3600000: cls.ONE_HOUR,
+        }
+
+        try:
+            return values[ms]
+
+        except KeyError:
+            raise ValueError(f"Unsupported interval: {ms} milliseconds.") from None
+
+    @classmethod
+    def from_seconds(cls, s: int) -> 'Interval':
+        """
+        Get the interval corresponding to the given number of seconds.
+        """
+        try:
+            return cls.milliseconds(s * 1000)
+
+        except ValueError:
+            raise ValueError(f"Unsupported interval: {s} seconds.") from None
+
+    @classmethod
+    def from_minutes(cls, m: int) -> 'Interval':
+        """
+        Get the interval corresponding to the given number of minutes.
+        """
+        try:
+            return cls.milliseconds(m * 60000)
+
+        except ValueError:
+            raise ValueError(f"Unsupported interval: {m} minutes.") from None
 
 
 class QuoteCondition(enum.IntEnum):

@@ -28,6 +28,10 @@ async def iter_csv(line_gen: AsyncGenerator[bytes, None]) -> AsyncGenerator[str,
     async for line in line_gen:
         line = line.decode('utf-8').strip()
 
+        # Skip empty lines
+        if not line:
+            continue
+
         values = line.split(',')
 
         if header is None:
@@ -86,11 +90,11 @@ def parse_date_time(date: str, time: str) -> _datetime.datetime:
     )
 
 
-def parse_strike(strike: int | str) -> decimal.Decimal:
+def parse_strike(strike: str) -> decimal.Decimal:
     """
     Parse the strike (``int`` or ``str``) in 1/10 cent into a decimal.
     """
-    return decimal.Decimal(strike) / 1000
+    return decimal.Decimal(strike)
 
 
 def parse_quote_fields(data: Dict[str, str]) -> Dict[str, Any]:
@@ -108,8 +112,8 @@ def parse_quote_fields(data: Dict[str, str]) -> Dict[str, Any]:
     if 'right' in data:
         parsed['right'] = OptionRight(data['right'])
 
-    if 'root' in data:
-        parsed['symbol'] = data['root']
+    if 'symbol' in data:
+        parsed['symbol'] = symbol['root']
 
     for field in ('bid_size', 'ask_size'):
         parsed[field] = int(data[field])
@@ -127,17 +131,17 @@ def parse_quote_fields(data: Dict[str, str]) -> Dict[str, Any]:
 
 def parse_trade_fields(data: Dict[str, str]) -> Dict[str, Any]:
     """
-    Parse trade fields in responses.
+    Parse trade fields from API responses.
     """
     parsed = {}
 
     for field in ('price', ):
         parsed[field] = decimal.Decimal(data[field])
 
-    for field in ('sequence', 'size', 'records_back'):
+    for field in ('sequence', 'size'):
         parsed[field] = int(data[field])
 
-    parsed['time'] = parse_date_time(data['date'], data['ms_of_day'])
+    parsed['time'] = parse_timestamp(data['timestamp'])
 
     for field in ('exchange', ):
         parsed[field] = Exchange(int(data[field]))
@@ -146,17 +150,24 @@ def parse_trade_fields(data: Dict[str, str]) -> Dict[str, Any]:
         parsed['strike'] = parse_strike(data['strike'])
 
     if 'right' in data:
-        parsed['right'] = OptionRight(data['right'])
+        right_str = data['right'].strip('"').upper()
+        if right_str == 'PUT':
+            parsed['right'] = OptionRight.PUT
+        elif right_str == 'CALL':
+            parsed['right'] = OptionRight.CALL
+        else:
+            parsed['right'] = OptionRight(right_str)
 
-    if 'root' in data:
-        parsed['symbol'] = data['root']
+    if 'symbol' in data:
+        parsed['symbol'] = data['symbol'].strip('"')
 
     conditions = []
     condition_fields = ('condition', 'ext_condition1', 'ext_condition2', 'ext_condition3', 'ext_condition4')
     for field in condition_fields:
-        value = int(data[field])
-        if value != 255:
-            conditions.append(TradeCondition(value))
+        if field in data:
+            value = int(data[field])
+            if value != 255:
+                conditions.append(TradeCondition(value))
 
     parsed['conditions'] = tuple(conditions)
 
@@ -176,7 +187,9 @@ def parse_eod_report(data: Dict[str, str]) -> Dict[str, Any]:
     for field in ('open', 'high', 'low', 'close'):
         parsed[field] = decimal.Decimal(data[field])
 
-    parsed['last_trade'] = parse_date_time(data['date'], data['ms_of_day2'])
+    # v3 has last_trade as ISO timestamp
+    if 'last_trade' in data:
+        parsed['last_trade'] = parse_timestamp(data['last_trade'])
 
     return parsed
 
@@ -187,5 +200,68 @@ def parse_index_price_report(data: Dict[str, str]) -> Dict[str, Any]:
     """
     return {
         'price': decimal.Decimal(data['price']),
-        'time': parse_date_time(data['date'], data['ms_of_day']),
+        'time': parse_timestamp(data['timestamp']),
     }
+
+
+def parse_timestamp(timestamp: str) -> _datetime.datetime:
+    """
+    Parse ISO 8601 timestamp (e.g., '2025-02-20T10:00:00').
+    Assumes eastern time.
+    """
+    # Parse ISO format without timezone
+    dt = datetime.datetime.fromisoformat(timestamp)
+    # Assume eastern time
+    return dt.replace(tzinfo=_datetime.MarketTimeZone)
+
+
+def parse_strike(strike: str) -> decimal.Decimal:
+    """
+    Parse strike from string (in dollars).
+    """
+    return decimal.Decimal(strike)
+
+
+def parse_quote_fields(data: Dict[str, str]) -> Dict[str, Any]:
+    """
+    Parse quote fields from API responses.
+    """
+    parsed = {}
+
+    for field in ('bid', 'ask'):
+        parsed[field] = decimal.Decimal(data[field])
+
+    if 'strike' in data:
+        parsed['strike'] = parse_strike(data['strike'])
+
+    if 'right' in data:
+        # v3 returns "PUT" or "CALL" (quoted), map to 'P' or 'C'
+        right_str = data['right'].strip('"').upper()
+        if right_str == 'PUT':
+            parsed['right'] = OptionRight.PUT
+        elif right_str == 'CALL':
+            parsed['right'] = OptionRight.CALL
+        else:
+            parsed['right'] = OptionRight(right_str)
+
+    if 'symbol' in data:
+        parsed['symbol'] = data['symbol'].strip('"')
+
+    for field in ('bid_size', 'ask_size'):
+        parsed[field] = int(data[field])
+
+    if 'bid_condition' in data and 'ask_condition' in data:
+        for field in ('bid_condition', 'ask_condition'):
+            parsed[field] = QuoteCondition.from_code(int(data[field]))
+
+    # EOD reports use 'created' field instead of 'timestamp'
+    if 'timestamp' in data:
+        parsed['time'] = parse_timestamp(data['timestamp'])
+    elif 'created' in data:
+        parsed['time'] = parse_timestamp(data['created'])
+
+    if 'bid_exchange' in data and 'ask_exchange' in data:
+        for field in ('bid_exchange', 'ask_exchange'):
+            parsed[field] = Exchange(int(data[field]))
+
+    return parsed

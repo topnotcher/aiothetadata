@@ -1,58 +1,50 @@
+import pytest
 from decimal import Decimal
 
-import pytest
-
 from aiothetadata.response import *
-from aiothetadata.constants import *
 from aiothetadata import datetime
+from aiothetadata.constants import *
 
 
 @pytest.mark.asyncio
 async def test_iter_csv():
-    header = ['foo', 'bar', 'baz']
-    data = (
-        ('1', '2', '3'),
-        ('4', '5', '6'),
-        ('7', '8', '9'),
-    )
+    async def line_gen():
+        yield b'foo,bar'
+        yield b'baz,qux'
+        yield b'abc,123'
 
-    async def _async_gen():
-        yield ','.join(header).encode()
+    gen = iter_csv(line_gen())
 
-        for row in data:
-            yield ','.join(row).encode()
+    rows = [row async for row in gen]
 
-
-    expected_rows = [dict(zip(header, row)) for row in data]
-    actual_rows = [row async for row in iter_csv(_async_gen())]
-
-    assert actual_rows == expected_rows
+    assert rows[0] == {'foo': 'baz', 'bar': 'qux'}
+    assert rows[1] == {'foo': 'abc', 'bar': '123'}
 
 
 def test_parse_date():
-    assert parse_date('20250211') == datetime.date(2025, 2, 11)
+    assert parse_date('20250221') == datetime.date(2025, 2, 21)
 
 
 def test_parse_time():
-    assert parse_time(34513666) == datetime.time(9, 35, 13, 666000)
+    assert parse_time('36000000') == datetime.time(10, 0)
 
 
 def test_parse_time_too_big():
-    assert parse_time(86400000) == datetime.time(23, 59, 59, 999000)
+    # $0.02 my ass
+    assert parse_time('86400000') == datetime.time(23, 59, 59, 999000)
 
 
 def test_parse_date_time():
-    data = (
-        '20250211',
-        34513666,
-    )
-    expected = datetime.datetime.combine(parse_date(data[0]), parse_time(data[1]))
-    assert parse_date_time(*data) == expected
+    assert parse_date_time('20250221', '36000000') == datetime.datetime(2025, 2, 21, 10, 0)
+
+
+def test_parse_strike():
+    assert parse_strike('123.456') == Decimal('123.456')
 
 
 def test_parse_trade_fields():
     raw = {
-        'ms_of_day': '35938270',
+        'timestamp': '2025-02-18T09:58:58.270',
         'sequence': '1054514035',
         'ext_condition1': '17',
         'ext_condition2': '255',
@@ -61,25 +53,21 @@ def test_parse_trade_fields():
         'condition': '130',
         'size': '1',
         'exchange': '5',
-        'price': '4.6500', 
-        'condition_flags': '0',
-        'price_flags': '1',
-        'volume_type': '0',
-        'records_back': '7',
-        'date': '20250218',
-        'strike': '123456',
-        'right': 'C',
+        'price': '4.6500',
+        'strike': '123.456',
+        'right': '"CALL"',
+        'symbol': '"SPX"',
     }
     parsed = {
         'price': Decimal('4.6500'),
         'sequence': 1054514035,
         'size': 1,
-        'records_back': 7,
-        'time': datetime.datetime(2025, 2, 18, 9, 58, 58, 270000),
+        'time': datetime.datetime(2025, 2, 18, 9, 58, 58, 270000, tzinfo=datetime.MarketTimeZone),
         'exchange': Exchange.CBOE,
         'conditions': (TradeCondition.MULTI_LEG_AUTOELEC_TRADE, TradeCondition.POSIT),
         'right': OptionRight.CALL,
         'strike': Decimal('123.456'),
+        'symbol': 'SPX',
     }
 
     assert parse_trade_fields(raw) == parsed
@@ -87,7 +75,7 @@ def test_parse_trade_fields():
 
 def test_parse_quote_fields():
     raw = {
-        'ms_of_day': '36000000',
+        'timestamp': '2025-02-17T10:00:00',
         'bid_size': '169',
         'bid_exchange': '5',
         'bid': '5.0000',
@@ -96,9 +84,9 @@ def test_parse_quote_fields():
         'ask_exchange': '5',
         'ask': '5.2000',
         'ask_condition': '50',
-        'date': '20250217',
-        'strike': '123456',
-        'right': 'C',
+        'strike': '123.456',
+        'right': '"CALL"',
+        'symbol': '"SPX"',
     }
     parsed = {
         'bid': Decimal('5.0000'),
@@ -108,10 +96,11 @@ def test_parse_quote_fields():
         'ask_size': 30,
         'bid_condition': QuoteCondition.NATIONAL_BBO,
         'ask_condition': QuoteCondition.NATIONAL_BBO,
-        'time': datetime.datetime(2025, 2, 17, 10, 0),
+        'time': datetime.datetime(2025, 2, 17, 10, 0, tzinfo=datetime.MarketTimeZone),
         'bid_exchange': Exchange.CBOE,
         'ask_exchange': Exchange.CBOE,
         'right': OptionRight.CALL,
+        'symbol': 'SPX',
     }
 
     assert parse_quote_fields(raw) == parsed
@@ -119,8 +108,8 @@ def test_parse_quote_fields():
 
 def test_parse_eod_report():
     raw = {
-        'ms_of_day': '36000000',
-        'ms_of_day2': '36061000',
+        'created': '2025-02-17T10:00:00',
+        'last_trade': '2025-02-17T10:01:01',
 
         'bid_size': '169',
         'bid_exchange': '5',
@@ -130,7 +119,6 @@ def test_parse_eod_report():
         'ask_exchange': '5',
         'ask': '5.2000',
         'ask_condition': '50',
-        'date': '20250217',
 
         'open': '13.37',
         'high': '1337.13',
@@ -138,6 +126,9 @@ def test_parse_eod_report():
         'close': '100.12',
         'volume': '1337',
         'count': '10',
+        'symbol': '"SPX"',
+        'strike': '123.456',
+        'right': '"CALL"',
     }
     expected = {
         'bid': Decimal('5.0000'),
@@ -147,11 +138,11 @@ def test_parse_eod_report():
         'ask_size': 30,
         'bid_condition': QuoteCondition.NATIONAL_BBO,
         'ask_condition': QuoteCondition.NATIONAL_BBO,
-        'time': datetime.datetime(2025, 2, 17, 10, 0),
+        'time': datetime.datetime(2025, 2, 17, 10, 0, tzinfo=datetime.MarketTimeZone),
         'bid_exchange': Exchange.CBOE,
         'ask_exchange': Exchange.CBOE,
 
-        'last_trade': datetime.datetime(2025, 2, 17, 10, 1, 1),
+        'last_trade': datetime.datetime(2025, 2, 17, 10, 1, 1, tzinfo=datetime.MarketTimeZone),
 
         'open': Decimal('13.37'),
         'high': Decimal('1337.13'),
@@ -159,6 +150,9 @@ def test_parse_eod_report():
         'close': Decimal('100.12'),
         'volume': 1337,
         'count': 10,
+        'symbol': 'SPX',
+        'strike': Decimal('123.456'),
+        'right': OptionRight.CALL,
     }
 
     report = parse_eod_report(raw)
@@ -168,13 +162,12 @@ def test_parse_eod_report():
 
 def test_parse_index_price_report():
     raw = {
-        'ms_of_day': '36000000',
+        'timestamp': '2025-02-17T10:00:00',
         'price': '313.3700',
-        'date': '20250217',
     }
     parsed = {
         'price': Decimal('313.3700'),
-        'time': datetime.datetime(2025, 2, 17, 10, 0),
+        'time': datetime.datetime(2025, 2, 17, 10, 0, tzinfo=datetime.MarketTimeZone),
     }
 
     assert parse_index_price_report(raw) == parsed

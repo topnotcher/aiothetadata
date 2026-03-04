@@ -15,7 +15,7 @@ __all__ = (
 )
 
 
-def format_price(value: PriceValue) -> int:
+def format_price(value: PriceValue) -> str:
     """
     Format a price value for a use in a ThetaData request.
 
@@ -29,19 +29,16 @@ def format_price(value: PriceValue) -> int:
         * ``str``: A string suitable for passing to ``decimal.Decimal``.
 
         :param value: The price value.
-        :return: The price in 1/10 cent.
+        :return: The price in string format.
     """
     if isinstance(value, int):
-        return value * 1000
-
-    if isinstance(value, float):
-        return int(round(value, 3) * 1000)
+        return str(value)
 
     if isinstance(value, str):
         value = decimal.Decimal(value)
 
-    if isinstance(value, decimal.Decimal):
-        return round(value * 1000)
+    if isinstance(value, (float, decimal.Decimal)):
+        return str(round(value, 3))
 
     raise ValueError(f'Invalid price: {value}')
 
@@ -80,7 +77,7 @@ def format_date(value: DateValue) -> str:
     raise ValueError(f'Invalid date: {value}')
 
 
-def format_time(value: TimeValue) -> int:
+def format_time(value: TimeValue) -> str:
     """
     Format a time value for use in a ThetaData request.
 
@@ -95,7 +92,7 @@ def format_time(value: TimeValue) -> int:
         * ``str``: ``HH:MM:SS`` in 24-hour time. Assumed to be eastern time.
 
     :param value: The time value.
-    :return: The number of milliseconds since midnight eastern.
+    :return: A string in HH:MM:SS:.sss format.
     """
     time_value = value
 
@@ -116,16 +113,10 @@ def format_time(value: TimeValue) -> int:
     if time_value.tzinfo and time_value.tzinfo != MarketTimeZone:
         raise ValueError('datetime.time must be naive or in eastern time!')
 
-    milliseconds = 0
-    milliseconds += time_value.hour * 3600000
-    milliseconds += time_value.minute * 60000
-    milliseconds += time_value.second * 1000
-    milliseconds += time_value.microsecond // 1000
-
-    return milliseconds
+    return time_value.strftime('%H:%M:%S.') + f"{time_value.microsecond // 1000:03d}"
 
 
-def format_date_time(value: DateTimeValue) -> Tuple[str, int]:
+def format_date_time(value: DateTimeValue) -> Tuple[str, str]:
     """
     Format a date/time value for use in a ThetaData request.
 

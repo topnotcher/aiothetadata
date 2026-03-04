@@ -15,23 +15,11 @@ from aiothetadata import datetime
 
 
 QUOTE_HEADER = [
-    'ms_of_day',
-    'bid_size',
-    'bid_exchange',
-    'bid',
-    'bid_condition',
-    'ask_size',
-    'ask_exchange',
-    'ask',
-    'ask_condition',
-    'date',
-]
-BULK_OPTION_QUOTE_HEADER = [
-    'root',
+    'symbol',
     'expiration',
     'strike',
     'right',
-    'ms_of_day',
+    'timestamp',
     'bid_size',
     'bid_exchange',
     'bid',
@@ -40,10 +28,28 @@ BULK_OPTION_QUOTE_HEADER = [
     'ask_exchange',
     'ask',
     'ask_condition',
-    'date',
+]
+BULK_OPTION_QUOTE_HEADER = [
+    'symbol',
+    'expiration',
+    'strike',
+    'right',
+    'timestamp',
+    'bid_size',
+    'bid_exchange',
+    'bid',
+    'bid_condition',
+    'ask_size',
+    'ask_exchange',
+    'ask',
+    'ask_condition',
 ]
 TRADE_HEADER = [
-    'ms_of_day',
+    'symbol',
+    'expiration',
+    'strike',
+    'right',
+    'timestamp',
     'sequence',
     'ext_condition1',
     'ext_condition2',
@@ -53,11 +59,6 @@ TRADE_HEADER = [
     'size',
     'exchange',
     'price',
-    'condition_flags',
-    'price_flags',
-    'volume_type',
-    'records_back',
-    'date',
 ]
 
 
@@ -86,7 +87,7 @@ class RequestHandler:
 
     def assert_csv(self):
         for request in self.requests:
-            assert request.query['use_csv'] == 'true'
+            assert request.query.get('format', 'csv') == 'csv'
 
     def get_params(self, n=0):
         assert len(self.requests) > 0
@@ -137,15 +138,15 @@ class TestThetaClient(BaseThetaClientTest):
             return [[value] for value in values]
 
         async def get_roots(request):
-            response = csv_response(['root'], make_row(first_page))
+            response = csv_response(['symbol'], make_row(first_page))
             response.headers['Next-Page'] = self.make_url('/page/1')
 
             return response
 
         async def get_second_page(request):
-            return csv_response(['root'], make_row(second_page))
+            return csv_response(['symbol'], make_row(second_page))
 
-        page1_handler = self.handler.register('/v2/list/roots/option', get_roots)
+        page1_handler = self.handler.register('/v3/option/list/symbols', get_roots)
         page2_handler = self.handler.register('/page/1', get_second_page)
 
         page1_handler.assert_csv()
@@ -156,7 +157,11 @@ class TestThetaClient(BaseThetaClientTest):
 
     async def test_paged_request(self):
         quote = {
-            'ms_of_day': '36000000',
+            'symbol': '"SPXW"',
+            'expiration': '2024-03-15',
+            'strike': '6000.000',
+            'right': '"PUT"',
+            'timestamp': '2025-02-17T10:00:00',
             'bid_size': '169',
             'bid_exchange': '5',
             'bid': '5.0000',
@@ -165,7 +170,6 @@ class TestThetaClient(BaseThetaClientTest):
             'ask_exchange': '5',
             'ask': '5.2000',
             'ask_condition': '50',
-            'date': '20250217',
         }
         ranges = []
 
@@ -176,7 +180,7 @@ class TestThetaClient(BaseThetaClientTest):
 
             return csv_response(quote.keys(), [quote.values()])
 
-        self.handler.register('/v2/at_time/option/quote', get_quotes)
+        self.handler.register('/v3/option/at_time/quote', get_quotes)
 
         quotes = self.client.get_quotes_at_time(
             symbol='SPXW',
@@ -203,9 +207,9 @@ class TestThetaOptionClient(BaseThetaClientTest):
         roots = ['MSFT', 'AAPL', 'SPX']
 
         async def get_roots(request):
-            return csv_response(['root'], [[root] for root in roots])
+            return csv_response(['symbol'], [[root] for root in roots])
 
-        handler = self.handler.register('/v2/list/roots/option', get_roots)
+        handler = self.handler.register('/v3/option/list/symbols', get_roots)
 
         symbols = await self.client.get_symbols()
         handler.assert_csv()
@@ -214,15 +218,13 @@ class TestThetaOptionClient(BaseThetaClientTest):
 
     async def test_null_quote(self):
         quote_data = [
-            # Test this weird thing that happens on weekends.
-            '0,0,0,0.0000,0,0,0,0.0000,0,0',
-            '36000000,1,1,325.3600,0,2,1,326.2800,0,20250219'
+            '"SPXW","2024-03-15",6000.000,"PUT",2025-02-19T10:00:00,1,1,325.3600,0,2,1,326.2800,0'
         ]
 
         async def get_quotes(request):
             return csv_response(QUOTE_HEADER, quote_data)
 
-        handler = self.handler.register('/v2/at_time/option/quote', get_quotes)
+        handler = self.handler.register('/v3/option/at_time/quote', get_quotes)
         handler.assert_csv()
 
         quote_gen = self.client.get_quotes_at_time(
@@ -241,13 +243,13 @@ class TestThetaOptionClient(BaseThetaClientTest):
 
     async def test_get_quote_at_time(self):
         quote_data = [
-            '36000000,1,1,325.3600,0,2,3,326.2800,1,20250219'
+            '"SPXW","2024-03-15",6000.000,"CALL",2025-02-19T10:00:00,1,1,325.3600,0,2,3,326.2800,1'
         ]
 
         async def get_quotes(request):
             return csv_response(QUOTE_HEADER, quote_data)
 
-        handler = self.handler.register('/v2/at_time/option/quote', get_quotes)
+        handler = self.handler.register('/v3/option/at_time/quote', get_quotes)
 
         quote = await self.client.get_quote_at_time(
             symbol='SPXW',
@@ -261,15 +263,14 @@ class TestThetaOptionClient(BaseThetaClientTest):
         assert isinstance(quote, Quote)
         assert quote.type == FinancialEntityType.OPTION
         expected = {
-            'root': 'SPXW',
-            'strike': '6000000',
-            'exp': '20240315',
+            'symbol': 'SPXW',
+            'strike': '6000',
+            'expiration': '20240315',
             'right': 'P',
             'start_date': '20240301',
             'end_date': '20240301',
-            'ivl': '36000000',
-            'rth': 'false',
-            'use_csv': 'true'
+            'time_of_day': '10:00:00.000',
+            'format': 'csv'
         }
         params = handler.get_params()
         assert params == expected
@@ -292,13 +293,13 @@ class TestThetaOptionClient(BaseThetaClientTest):
 
     async def test_get_quote_at_time_time_formats(self):
         quote_data = [
-            '36000000,1,1,325.3600,0,2,3,326.2800,1,20250219'
+            '"SPXW","2024-03-15",6000.000,"CALL",2025-02-19T10:00:00,1,1,325.3600,0,2,3,326.2800,1'
         ]
 
         async def get_quotes(request):
             return csv_response(QUOTE_HEADER, quote_data)
 
-        handler = self.handler.register('/v2/at_time/option/quote', get_quotes)
+        handler = self.handler.register('/v3/option/at_time/quote', get_quotes)
 
         time_values = (
             (datetime.datetime(2024, 3, 1, 10, 1, 13, microsecond=123000), ('20240301', '36073123')),
@@ -320,19 +321,17 @@ class TestThetaOptionClient(BaseThetaClientTest):
             params = handler.get_params(idx)
             idx += 1
 
-            assert params['ivl'] == parsed_ms
-            assert params['start_date'] == parsed_date
             assert params['end_date'] == parsed_date
 
     async def test_get_quotes_at_time(self):
         quote_data = [
-            '36000000,1,1,325.3600,0,2,3,326.2800,1,20250219'
+            '"SPXW","2024-03-15",6000.000,"CALL",2025-02-19T10:00:00,1,1,325.3600,0,2,3,326.2800,1'
         ]
 
         async def get_quotes(request):
             return csv_response(QUOTE_HEADER, quote_data)
 
-        handler = self.handler.register('/v2/at_time/option/quote', get_quotes)
+        handler = self.handler.register('/v3/option/at_time/quote', get_quotes)
 
         gen = self.client.get_quotes_at_time(
             symbol='SPXW',
@@ -349,32 +348,31 @@ class TestThetaOptionClient(BaseThetaClientTest):
             assert quote.type == FinancialEntityType.OPTION
 
         expected = {
-            'root': 'SPXW',
-            'strike': '6000000',
-            'exp': '20240315',
+            'symbol': 'SPXW',
+            'strike': '6000',
+            'expiration': '20240315',
             'right': 'C',
             'start_date': '20240211',
             'end_date': '20240221',
-            'ivl': '36073000',
-            'rth': 'false',
-            'use_csv': 'true'
+            'time_of_day': '10:01:13.000',
+            'format': 'csv'
         }
         assert handler.get_params() == expected
 
     async def test_get_all_quotes_at_time(self):
         quote_data = [
-            'SPX,20250221,200000,C,36000000,1,5,5892.30,50,1,5,5909.20,50,20250220',
-            'SPX,20250221,200000,P,36000000,0,5,0.00,50,527,5,0.05,50,20250220',
-            'SPX,20250221,400000,C,36000000,1,5,5692.20,50,1,5,5708.70,50,20250220',
-            'SPX,20250221,400000,P,36000000,0,5,0.00,50,525,5,0.05,50,20250220',
-            'SPX,20250221,600000,C,36000000,1,5,5492.30,50,1,5,5509.00,50,20250220',
-            'SPX,20250221,600000,P,36000000,0,5,0.00,50,525,5,0.05,50,20250220',
+            '"SPX","2025-02-21",2000.000,"CALL",2025-02-20T10:00:00,1,5,5892.30,50,1,5,5909.20,50',
+            '"SPX","2025-02-21",2000.000,"PUT",2025-02-20T10:00:00,0,5,0.00,50,527,5,0.05,50',
+            '"SPX","2025-02-21",4000.000,"CALL",2025-02-20T10:00:00,1,5,5692.20,50,1,5,5708.70,50',
+            '"SPX","2025-02-21",4000.000,"PUT",2025-02-20T10:00:00,0,5,0.00,50,525,5,0.05,50',
+            '"SPX","2025-02-21",6000.000,"CALL",2025-02-20T10:00:00,1,5,5492.30,50,1,5,5509.00,50',
+            '"SPX","2025-02-21",6000.000,"PUT",2025-02-20T10:00:00,0,5,0.00,50,525,5,0.05,50',
         ]
 
         async def get_quotes(request):
             return csv_response(BULK_OPTION_QUOTE_HEADER, quote_data)
 
-        handler = self.handler.register('/v2/bulk_at_time/option/quote', get_quotes)
+        handler = self.handler.register('/v3/option/at_time/quote', get_quotes)
 
         gen = self.client.get_all_quotes_at_time(
             symbol='SPXW',
@@ -390,13 +388,12 @@ class TestThetaOptionClient(BaseThetaClientTest):
             assert quote.symbol == 'SPX'
 
         expected = {
-            'root': 'SPXW',
-            'exp': '20240315',
+            'symbol': 'SPXW',
+            'expiration': '20240315',
             'start_date': '20240211',
             'end_date': '20240215',
-            'ivl': '36073000',
-            'rth': 'false',
-            'use_csv': 'true'
+            'time_of_day': '10:01:13.000',
+            'format': 'csv'
         }
         assert handler.get_params() == expected
         expected['start_date'] = '20240216'
@@ -405,16 +402,16 @@ class TestThetaOptionClient(BaseThetaClientTest):
 
     async def test_get_trades_at_time(self):
         trade_data = [
-            '35996864,758,32,255,255,115,115,2,57,321.8150,7,0,0,0,20250218',
-            '35998844,55,32,95,255,115,115,20,3,325.8000,7,0,0,0,20250219',
-            '35997876,423,32,255,255,115,115,1,57,322.4854,7,0,0,0,20250220',
-            '35997442,357,32,255,255,115,115,5,57,318.6300,7,0,0,0,20250221',
+            '"SPXW","2024-03-15",6000.000,"CALL",2025-02-18T09:59:56.864,758,32,255,255,115,115,2,57,321.8150',
+            '"SPXW","2024-03-15",6000.000,"CALL",2025-02-19T09:59:58.844,55,32,95,255,115,115,20,3,325.8000',
+            '"SPXW","2024-03-15",6000.000,"CALL",2025-02-20T09:59:57.876,423,32,255,255,115,115,1,57,322.4854',
+            '"SPXW","2024-03-15",6000.000,"CALL",2025-02-21T09:59:57.442,357,32,255,255,115,115,5,57,318.6300',
         ]
 
         async def get_trades(request):
             return csv_response(TRADE_HEADER, trade_data)
 
-        handler = self.handler.register('/v2/at_time/option/trade', get_trades)
+        handler = self.handler.register('/v3/option/at_time/trade', get_trades)
 
         gen = self.client.get_trades_at_time(
             symbol='SPXW',
@@ -434,15 +431,14 @@ class TestThetaOptionClient(BaseThetaClientTest):
         assert len(trades) == 4
 
         expected = {
-            'root': 'SPXW',
-            'strike': '6000000',
-            'exp': '20240315',
+            'symbol': 'SPXW',
+            'strike': '6000',
+            'expiration': '20240315',
             'right': 'C',
             'start_date': '20240211',
             'end_date': '20240221',
-            'ivl': '36073000',
-            'rth': 'false',
-            'use_csv': 'true'
+            'time_of_day': '10:01:13.000',
+            'format': 'csv'
         }
 
         assert handler.get_params() == expected
@@ -456,9 +452,9 @@ class TestThetaStockClient(BaseThetaClientTest):
         roots = ['MSFT', 'AAPL', 'ZBRA']
 
         async def get_roots(request):
-            return csv_response(['root'], [[root] for root in roots])
+            return csv_response(['symbol'], [[root] for root in roots])
 
-        handler = self.handler.register('/v2/list/roots/stock', get_roots)
+        handler = self.handler.register('/v3/stock/list/symbols', get_roots)
 
         symbols = await self.client.get_symbols()
         handler.assert_csv()
