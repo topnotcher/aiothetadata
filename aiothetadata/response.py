@@ -17,6 +17,7 @@ __all__ = (
     'parse_strike',
     'parse_eod_report',
     'parse_index_price_report',
+    'parse_greeks',
 )
 
 
@@ -258,4 +259,48 @@ def parse_quote_fields(data: Dict[str, str]) -> Dict[str, Any]:
         for field in ('bid_exchange', 'ask_exchange'):
             parsed[field] = Exchange(int(data[field]))
 
+    return parsed
+
+
+def parse_greeks(data: Dict[str, str]) -> Dict[str, Any]:
+    """
+    Parse greeks fields from API responses.
+    """
+    parsed = {}
+    
+    # Parse underlying price and timestamp
+    parsed['underlying_price'] = decimal.Decimal(data['underlying_price'])
+    
+    if 'timestamp' in data:
+        parsed['time'] = parse_timestamp(data['timestamp'])
+    elif 'quote_timestamp' in data:
+        parsed['time'] = parse_timestamp(data['quote_timestamp'])
+    
+    # Parse option entity fields
+    if 'strike' in data:
+        parsed['strike'] = parse_strike(data['strike'])
+    
+    if 'right' in data:
+        right_str = data['right'].strip('"').upper()
+        if right_str == 'PUT':
+            parsed['right'] = OptionRight.PUT
+        elif right_str == 'CALL':
+            parsed['right'] = OptionRight.CALL
+        else:
+            parsed['right'] = OptionRight(right_str)
+    
+    if 'symbol' in data:
+        parsed['symbol'] = data['symbol'].strip('"')
+    
+    # Parse greeks values (use 0 for missing fields)
+    for field in ('iv', 'delta', 'gamma', 'theta', 'vega', 'rho',
+                  'vanna', 'charm', 'vomma', 'veta', 'speed', 'zomma', 'color', 'ultima'):
+        if field in data and data[field]:
+            try:
+                parsed[field] = decimal.Decimal(data[field])
+            except (ValueError, decimal.InvalidOperation):
+                parsed[field] = decimal.Decimal('0')
+        else:
+            parsed[field] = decimal.Decimal('0')
+    
     return parsed

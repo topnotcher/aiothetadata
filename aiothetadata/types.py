@@ -16,6 +16,7 @@ __all__ = (
     'Trade',
     'EodReport',
     'IndexPriceReport',
+    'Greeks',
 
     'FinancialEntityType',
     'FinancialEntity',
@@ -155,3 +156,32 @@ class EodReport(BaseFinancialInfo):
 class IndexPriceReport(BaseFinancialInfo):
     time: datetime.datetime
     price: decimal.Decimal
+
+
+@dataclass(slots=True, frozen=True)
+class Greeks(BaseFinancialInfo):
+    """Option greeks at a specific point in time."""
+    time: datetime.datetime
+    underlying_price: decimal.Decimal
+    
+    # Implied volatility
+    iv: decimal.Decimal
+    
+    # First order greeks
+    delta: decimal.Decimal
+    gamma: decimal.Decimal
+    theta: decimal.Decimal
+    vega: decimal.Decimal
+    rho: decimal.Decimal
+    
+    # Second order greeks (optional, not always provided)
+    vanna: decimal.Decimal = decimal.Decimal('0')
+    charm: decimal.Decimal = decimal.Decimal('0')
+    vomma: decimal.Decimal = decimal.Decimal('0')
+    veta: decimal.Decimal = decimal.Decimal('0')
+    speed: decimal.Decimal = decimal.Decimal('0')
+    zomma: decimal.Decimal = decimal.Decimal('0')
+    color: decimal.Decimal = decimal.Decimal('0')
+    
+    # Third order greeks (optional)
+    ultima: decimal.Decimal = decimal.Decimal('0')
