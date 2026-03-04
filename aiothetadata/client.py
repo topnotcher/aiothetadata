@@ -491,6 +491,25 @@ class ThetaOptionClient(_ThetaClient):
         gen = self.stream_data('option', 'history', 'quote', params_gen=split_days, **params)
         return self._gen_quotes(params, gen)
 
+    async def get_strikes(self, symbol: str, expiration: DateValue) -> AsyncGenerator[PriceValue, None]:
+        params = {
+            'symbol': symbol,
+            'expiration': format_date(expiration),
+        }
+
+        gen = self.stream_data('option', 'list', 'strikes', **params)
+        async for row in gen:
+            yield parse_strike(row['strike'])
+
+    async def get_expirations(self, symbol: str) -> AsyncGenerator[DateValue, None]:
+        params = {
+            'symbol': symbol,
+        }
+
+        gen = self.stream_data('option', 'list', 'expirations', **params)
+        async for row in gen:
+            yield parse_date(row['expiration'])
+
 
 class ThetaStockClient(_ThetaClient):
 

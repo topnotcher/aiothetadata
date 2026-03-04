@@ -50,6 +50,14 @@ async def main():
             async for quote in quotes:
                 print('\t', str(quote.time), 'bid:', quote.bid, 'ask:', quote.ask)
 
+        with shield('SPXW 20260303 Strikes'):
+            async for strike in iter_condensed(client.option.get_strikes('SPXW', 20260303), 5):
+                print('\t', strike)
+
+        with shield('SPXW Expirations'):
+            async for exp in iter_condensed(client.option.get_expirations('SPXW'), 5):
+                print('\t', exp)
+
         with shield('SPX 20250221 $6000 PUT quote 2/20/2025 @ 10:00'):
             data = await client.option.get_quote_at_time(
                 symbol='SPX',
