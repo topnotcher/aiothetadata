@@ -544,7 +544,7 @@ class ThetaOptionClient(_ThetaClient):
         if right is not None:
             params['right'] = right
 
-        gen = self.stream_data('option', 'snapshot', order, **params)
+        gen = self.stream_data('option', 'snapshot', 'greeks', order.value, **params)
 
         async for row in gen:
             parsed = parse_first_order_greeks(row)

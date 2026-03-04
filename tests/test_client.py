@@ -61,6 +61,26 @@ TRADE_HEADER = [
     'price',
 ]
 
+GREEKS_FIRST_ORDER_HEADER = [
+    'symbol',
+    'expiration',
+    'strike',
+    'right',
+    'timestamp',
+    'bid',
+    'ask',
+    'delta',
+    'theta',
+    'vega',
+    'rho',
+    'epsilon',
+    'lambda',
+    'implied_vol',
+    'iv_error',
+    'underlying_timestamp',
+    'underlying_price',
+]
+
 
 def csv_response(header, rows):
     output = io.StringIO()
@@ -442,6 +462,112 @@ class TestThetaOptionClient(BaseThetaClientTest):
         }
 
         assert handler.get_params() == expected
+
+
+    async def test_get_greeks_snapshot_specific_contract(self):
+        greeks_data = [
+            'SPXW,2026-03-13,6850.000,PUT,2026-03-04T09:07:13.376,84.6000,85.5000,-0.5576,-3.9430,398.3919,-85.1814,83.3173,-44.6958,0.1741,0.0000,2026-03-03T16:03:53,6816.6300',
+        ]
+
+        async def get_greeks(request):
+            return csv_response(GREEKS_FIRST_ORDER_HEADER, greeks_data)
+
+        handler = self.handler.register('/v3/option/snapshot/greeks/first_order', get_greeks)
+
+        gen = self.client.get_greeks_snapshot(
+            symbol='SPXW',
+            expiration=20260313,
+            strike=6850,
+            right=OptionRight.PUT,
+        )
+
+        results = [g async for g in gen]
+        handler.assert_csv()
+
+        assert len(results) == 1
+        g = results[0]
+
+        assert isinstance(g, FirstOrderGreeks)
+        assert g.type == FinancialEntityType.OPTION
+        assert g.symbol == 'SPXW'
+        assert g.entity.strike == Decimal('6850.000')
+        assert g.entity.right == OptionRight.PUT
+        assert g.delta == Decimal('-0.5576')
+        assert g.theta == Decimal('-3.9430')
+        assert g.vega == Decimal('398.3919')
+        assert g.rho == Decimal('-85.1814')
+        assert g.epsilon == Decimal('83.3173')
+        assert g.leverage == Decimal('-44.6958')
+        assert g.iv == Decimal('0.1741')
+        assert g.iv_error == Decimal('0.0000')
+        assert g.bid == Decimal('84.6000')
+        assert g.ask == Decimal('85.5000')
+        assert g.underlying_price == Decimal('6816.6300')
+        assert g.time == datetime.datetime(2026, 3, 4, 9, 7, 13, 376000, tzinfo=datetime.MarketTimeZone)
+
+        expected_params = {
+            'symbol': 'SPXW',
+            'expiration': '20260313',
+            'strike': '6850',
+            'right': 'PUT',
+            'format': 'csv',
+        }
+        assert handler.get_params() == expected_params
+
+    async def test_get_greeks_snapshot_all_contracts(self):
+        greeks_data = [
+            'SPXW,2026-03-13,6850.000,PUT,2026-03-04T09:07:21.724,84.9000,85.8000,-0.5573,-3.9624,398.4344,-85.1445,83.2738,-44.5150,0.1749,0.0000,2026-03-03T16:03:53,6816.6300',
+            'SPXW,2026-03-13,6850.000,CALL,2026-03-04T09:07:21.598,81.1000,81.9000,0.4602,-6.1912,400.6075,66.9827,-68.7691,38.4976,0.2349,0.0000,2026-03-03T16:03:53,6816.6300',
+            'SPXW,2026-03-13,6125.000,PUT,2026-03-04T09:07:20.504,4.5000,4.8000,-0.0297,-1.6508,68.1691,-4.5449,4.4430,-43.5987,0.3923,0.0000,2026-03-03T16:03:53,6816.6300',
+        ]
+
+        async def get_greeks(request):
+            return csv_response(GREEKS_FIRST_ORDER_HEADER, greeks_data)
+
+        handler = self.handler.register('/v3/option/snapshot/greeks/first_order', get_greeks)
+
+        gen = self.client.get_greeks_snapshot(symbol='SPXW', expiration=20260313)
+        results = [g async for g in gen]
+        handler.assert_csv()
+
+        assert len(results) == 3
+        assert all(isinstance(g, FirstOrderGreeks) for g in results)
+
+        assert results[0].entity.right == OptionRight.PUT
+        assert results[1].entity.right == OptionRight.CALL
+        assert results[0].delta == Decimal('-0.5573')
+        assert results[1].delta == Decimal('0.4602')
+        assert results[2].entity.strike == Decimal('6125.000')
+
+        expected_params = {
+            'symbol': 'SPXW',
+            'expiration': '20260313',
+            'format': 'csv',
+        }
+        assert handler.get_params() == expected_params
+
+    async def test_get_greeks_at_strike(self):
+        greeks_data = [
+            'SPXW,2026-03-13,6850.000,PUT,2026-03-04T09:07:13.376,84.6000,85.5000,-0.5576,-3.9430,398.3919,-85.1814,83.3173,-44.6958,0.1741,0.0000,2026-03-03T16:03:53,6816.6300',
+        ]
+
+        async def get_greeks(request):
+            return csv_response(GREEKS_FIRST_ORDER_HEADER, greeks_data)
+
+        self.handler.register('/v3/option/snapshot/greeks/first_order', get_greeks)
+
+        g = await self.client.get_greeks_at_strike(
+            symbol='SPXW',
+            expiration=20260313,
+            strike=6850,
+            right=OptionRight.PUT,
+        )
+
+        assert isinstance(g, FirstOrderGreeks)
+        assert g.entity.strike == Decimal('6850.000')
+        assert g.entity.right == OptionRight.PUT
+        assert g.delta == Decimal('-0.5576')
+        assert g.iv == Decimal('0.1741')
 
 
 class TestThetaStockClient(BaseThetaClientTest):
