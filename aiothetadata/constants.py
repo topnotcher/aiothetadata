@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import enum
 
 from ._trade_conditions import _TRADE_CONDITIONS
@@ -70,7 +72,7 @@ class Interval(enum.StrEnum):
         return values[self]
 
     @classmethod
-    def parse(cls, value: str | int | 'Interval') -> 'Interval':
+    def parse(cls, value: str | int | Interval) -> Interval:
         """
         Parse a string or integer (milliseconds) into an ``Interval``.
 
@@ -92,7 +94,7 @@ class Interval(enum.StrEnum):
         raise ValueError(f'Invalid interval: {value}')
 
     @classmethod
-    def from_milliseconds(cls, ms: int) -> 'Interval':
+    def from_milliseconds(cls, ms: int) -> Interval:
         """
         Get the interval corresponding to the given number of milliseconds.
         """
@@ -120,7 +122,7 @@ class Interval(enum.StrEnum):
             raise ValueError(f"Unsupported interval: {ms} milliseconds.") from None
 
     @classmethod
-    def from_seconds(cls, s: int) -> 'Interval':
+    def from_seconds(cls, s: int) -> Interval:
         """
         Get the interval corresponding to the given number of seconds.
         """
@@ -131,7 +133,7 @@ class Interval(enum.StrEnum):
             raise ValueError(f"Unsupported interval: {s} seconds.") from None
 
     @classmethod
-    def from_minutes(cls, m: int) -> 'Interval':
+    def from_minutes(cls, m: int) -> Interval:
         """
         Get the interval corresponding to the given number of minutes.
         """
