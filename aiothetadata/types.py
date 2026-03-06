@@ -160,31 +160,27 @@ class IndexPriceReport(BaseFinancialInfo):
 
 @dataclass(slots=True, frozen=True)
 class FirstOrderGreeks(BaseFinancialInfo):
-    """First-order option greeks from the ``greeks_first_order`` endpoint.
-
-    :param time: Timestamp of the greeks calculation.
-    :param underlying_price: Underlying price used for the calculation.
-    :param iv: Implied volatility.
-    :param iv_error: Model error on the implied volatility calculation.
-    :param delta: Rate of change of option price with respect to underlying price.
-    :param theta: Rate of change of option price with respect to time.
-    :param vega: Rate of change of option price with respect to volatility.
-    :param rho: Rate of change of option price with respect to interest rate.
-    :param epsilon: Rate of change of option price with respect to dividend yield.
-    :param leverage: Option leverage (``lambda`` in ThetaData; Python reserved keyword).
-    :param bid: Current bid price of the option.
-    :param ask: Current ask price of the option.
-    """
-
+    #: Timestamp of the greeks calculation.
     time: datetime.datetime
+    #: Underlying price used for the calculation.
     underlying_price: decimal.Decimal
+    #: Implied volatility.
     iv: decimal.Decimal
+    #: Model error on the implied volatility calculation.
     iv_error: decimal.Decimal
+    #: Rate of change of option price with respect to underlying price.
     delta: decimal.Decimal
+    #: Rate of change of option price with respect to time.
     theta: decimal.Decimal
+    #: Rate of change of option price with respect to volatility.
     vega: decimal.Decimal
+    #: Rate of change of option price with respect to interest rate.
     rho: decimal.Decimal
+    #: Rate of change of option price with respect to dividend yield.
     epsilon: decimal.Decimal
+    #: Option leverage (``lambda`` in ThetaData; Python reserved keyword).
     leverage: decimal.Decimal
+    #: Current bid price of the option.
     bid: decimal.Decimal
+    #: Current ask price of the option.
     ask: decimal.Decimal
