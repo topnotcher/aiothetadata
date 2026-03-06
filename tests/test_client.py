@@ -8,9 +8,9 @@ from aiohttp.test_utils import RawTestServer, AioHTTPTestCase
 
 from aiothetadata.client import ThetaClient, ThetaStockClient, ThetaOptionClient, ThetaIndexClient, ThetaDataHttpError
 from aiothetadata.constants import *
-from tests.utils import csv_response, RequestHandler, Handler, BaseThetaClientTest
 from aiothetadata.types import *
 from aiothetadata import datetime
+from .utils import csv_response, BaseThetaClientTest
 
 
 QUOTE_HEADER = [

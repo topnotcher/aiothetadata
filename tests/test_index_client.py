@@ -10,7 +10,7 @@ from aiothetadata.client import ThetaIndexClient
 from aiothetadata.types import IndexPriceReport, FinancialEntityType
 from aiothetadata import datetime as thetadt
 
-from tests.utils import csv_response, Handler, BaseThetaClientTest
+from .utils import csv_response, BaseThetaClientTest
 
 
 INDEX_PRICE_HEADER = ['timestamp', 'price']
