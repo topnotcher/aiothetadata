@@ -629,6 +629,45 @@ class ThetaStockClient(_ThetaClient):
 
 class ThetaIndexClient(_ThetaClient):
 
+    def get_prices_at_time(
+        self,
+        symbol: str,
+        start_date: DateValue,
+        end_date: DateValue,
+        time: TimeValue,
+    ) -> AsyncGenerator['IndexPriceReport', None]:
+        """
+        Get index price at a specific time of day for a range of dates.
+
+        Useful for fetching daily close prices (e.g. time='16:00:00') across
+        a date range without pulling full intraday bars.
+
+        :param symbol: Index symbol (e.g. ``'SPX'``).
+        :param start_date: Start of date range.
+        :param end_date: End of date range.
+        :param time: Time of day (e.g. ``'16:00:00'`` for close).
+        :returns: Async generator of :class:`~.IndexPriceReport` objects.
+        """
+        params = {
+            'symbol': symbol,
+            'start_date': format_date(start_date),
+            'end_date': format_date(end_date),
+            'time_of_day': format_time(time),
+        }
+        split_days = self.date_range_params(30)
+        return self._gen_index_prices(
+            symbol,
+            self.stream_data('index', 'at_time', 'price', params_gen=split_days, **params),
+        )
+
+    async def _gen_index_prices(
+        self, symbol: str, gen: AsyncGenerator[Dict[str, str], None]
+    ) -> AsyncGenerator['IndexPriceReport', None]:
+        async for data in gen:
+            parsed = parse_index_price_report(data)
+            if parsed['price'] != 0:
+                yield IndexPriceReport(entity=Index.create(symbol=symbol), **parsed)
+
     async def get_historical_prices(
         self, symbol: str, start_date: DateValue, end_date: DateValue,
         interval: int | str | Interval, hours: TradingHours=TradingHours.REGULAR,
