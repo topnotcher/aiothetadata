@@ -510,6 +510,63 @@ class ThetaOptionClient(_ThetaClient):
         async for row in gen:
             yield parse_date(row['expiration'])
 
+    async def get_greeks_snapshot(
+        self, symbol: str, expiration: DateValue,
+        order: GreeksOrder = GreeksOrder.FIRST,
+        strike: Optional[PriceValue] = None,
+        right: Optional[OptionRight] = None,
+    ) -> AsyncGenerator[FirstOrderGreeks, None]:
+        """Get a greeks snapshot for option contracts.
+
+        If ``strike`` and ``right`` are specified, yields greeks for that
+        specific contract only. If omitted, yields greeks for all contracts
+        with the given expiration.
+
+        .. note::
+            Only :attr:`~.GreeksOrder.FIRST` is available on standard
+            subscriptions. Higher orders require a professional subscription.
+
+        :param symbol: The underlying symbol (e.g. ``'SPXW'``).
+        :param expiration: The option expiration date.
+        :param order: The order of greeks to retrieve.
+        :param strike: Strike price; required when ``right`` is specified.
+        :param right: Option right; required when ``strike`` is specified.
+        :yields: :class:`~.FirstOrderGreeks` objects.
+        """
+        params = {
+            'symbol': symbol,
+            'expiration': format_date(expiration),
+        }
+
+        if strike is not None:
+            params['strike'] = format_price(strike)
+
+        if right is not None:
+            params['right'] = right
+
+        gen = self.stream_data('option', 'snapshot', 'greeks', order.value, **params)
+
+        async for row in gen:
+            parsed = parse_first_order_greeks(row)
+            self._populate_entity_params(params, parsed)
+            yield FirstOrderGreeks(**parsed)
+
+    async def get_greeks_at_strike(
+        self, symbol: str, expiration: DateValue, strike: PriceValue,
+        right: OptionRight, order: GreeksOrder = GreeksOrder.FIRST,
+    ) -> FirstOrderGreeks:
+        """Get greeks for a specific option contract.
+
+        :param symbol: The underlying symbol.
+        :param expiration: The option expiration date.
+        :param strike: The strike price.
+        :param right: The option right.
+        :param order: The order of greeks to retrieve.
+        :returns: A :class:`~.FirstOrderGreeks` object.
+        """
+        gen = self.get_greeks_snapshot(symbol, expiration, order, strike, right)
+        return await anext(gen)
+
 
 class ThetaStockClient(_ThetaClient):
 

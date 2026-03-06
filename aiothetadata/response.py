@@ -17,6 +17,7 @@ __all__ = (
     'parse_strike',
     'parse_eod_report',
     'parse_index_price_report',
+    'parse_first_order_greeks',
 )
 
 
@@ -257,5 +258,36 @@ def parse_quote_fields(data: Dict[str, str]) -> Dict[str, Any]:
     if 'bid_exchange' in data and 'ask_exchange' in data:
         for field in ('bid_exchange', 'ask_exchange'):
             parsed[field] = Exchange(int(data[field]))
+
+    return parsed
+
+
+def parse_first_order_greeks(data: Dict[str, str]) -> Dict[str, Any]:
+    """Parse first-order greeks fields from a ``greeks_first_order`` API response.
+
+    :param data: Raw response row as a string-to-string mapping.
+    :returns: Parsed field dict suitable for constructing a
+        :class:`~aiothetadata.types.FirstOrderGreeks`.
+    """
+    parsed = {}
+
+    parsed['time'] = parse_timestamp(data['timestamp'])
+    parsed['underlying_price'] = decimal.Decimal(data['underlying_price'])
+
+    # implied_vol in the API maps to iv in the type; lambda is a Python reserved word.
+    parsed['iv'] = decimal.Decimal(data['implied_vol'])
+    parsed['leverage'] = decimal.Decimal(data['lambda'])
+
+    for field in ('delta', 'theta', 'vega', 'rho', 'epsilon', 'iv_error', 'bid', 'ask'):
+        parsed[field] = decimal.Decimal(data[field])
+
+    if 'strike' in data:
+        parsed['strike'] = parse_strike(data['strike'])
+
+    if 'right' in data:
+        parsed['right'] = OptionRight(data['right'])
+
+    if 'symbol' in data:
+        parsed['symbol'] = data['symbol']
 
     return parsed

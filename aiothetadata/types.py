@@ -2,7 +2,7 @@ import enum
 import decimal
 import datetime
 from dataclasses import dataclass
-from typing import Union, Tuple
+from typing import Optional, Union, Tuple
 
 from .constants import Exchange, QuoteCondition, TradeCondition, OptionRight
 
@@ -16,6 +16,7 @@ __all__ = (
     'Trade',
     'EodReport',
     'IndexPriceReport',
+    'FirstOrderGreeks',
 
     'FinancialEntityType',
     'FinancialEntity',
@@ -155,3 +156,31 @@ class EodReport(BaseFinancialInfo):
 class IndexPriceReport(BaseFinancialInfo):
     time: datetime.datetime
     price: decimal.Decimal
+
+
+@dataclass(slots=True, frozen=True)
+class FirstOrderGreeks(BaseFinancialInfo):
+    #: Timestamp of the greeks calculation.
+    time: datetime.datetime
+    #: Underlying price used for the calculation.
+    underlying_price: decimal.Decimal
+    #: Implied volatility.
+    iv: decimal.Decimal
+    #: Model error on the implied volatility calculation.
+    iv_error: decimal.Decimal
+    #: Rate of change of option price with respect to underlying price.
+    delta: decimal.Decimal
+    #: Rate of change of option price with respect to time.
+    theta: decimal.Decimal
+    #: Rate of change of option price with respect to volatility.
+    vega: decimal.Decimal
+    #: Rate of change of option price with respect to interest rate.
+    rho: decimal.Decimal
+    #: Rate of change of option price with respect to dividend yield.
+    epsilon: decimal.Decimal
+    #: Option leverage (``lambda`` in ThetaData; Python reserved keyword).
+    leverage: decimal.Decimal
+    #: Current bid price of the option.
+    bid: decimal.Decimal
+    #: Current ask price of the option.
+    ask: decimal.Decimal

@@ -12,6 +12,7 @@ __all__ = (
     'Exchange',
     'TradeCondition',
     'Interval',
+    'GreeksOrder',
 )
 
 
@@ -585,3 +586,22 @@ class TradeCondition(enum.IntEnum):
     @property
     def last(self) -> bool:
         return _TRADE_CONDITIONS[self]['last']
+
+
+class GreeksOrder(enum.Enum):
+    """The order of greeks to retrieve from the greeks snapshot endpoint."""
+
+    #: First-order greeks: delta, theta, vega, rho, epsilon, leverage, IV.
+    FIRST = 'first_order'
+
+    #: Second-order greeks: gamma, vanna, charm, vomma, veta.
+    #: Requires a professional subscription.
+    SECOND = 'second_order'
+
+    #: Third-order greeks: speed, zomma, color, ultima.
+    #: Requires a professional subscription.
+    THIRD = 'third_order'
+
+    #: All greeks (first, second, and third order combined).
+    #: Requires a professional subscription.
+    ALL = 'all'
