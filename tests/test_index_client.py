@@ -1,78 +1,25 @@
 """
-Tests for ThetaIndexClient.get_prices_at_time().
+Tests for ThetaIndexClient.
 """
-import io
-import csv
 import datetime
-import zoneinfo
 from decimal import Decimal
 
-import pytest
-from aiohttp import web
-from aiohttp.test_utils import AioHTTPTestCase, RawTestServer
+from aiohttp.test_utils import RawTestServer
 
 from aiothetadata.client import ThetaIndexClient
 from aiothetadata.types import IndexPriceReport, FinancialEntityType
 from aiothetadata import datetime as thetadt
 
+from tests.utils import csv_response, Handler, BaseThetaClientTest
+
 
 INDEX_PRICE_HEADER = ['timestamp', 'price']
 
 
-def csv_response(header, rows):
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(header)
-    for row in rows:
-        writer.writerow(row)
-    return web.Response(text=output.getvalue(), content_type='text/csv')
+class TestThetaIndexClientGetPricesAtTime(BaseThetaClientTest):
 
-
-class RequestHandler:
-    def __init__(self, callback):
-        self.requests = []
-        self.callback = callback
-
-    async def __call__(self, request):
-        self.requests.append(request)
-        return await self.callback(request)
-
-    def get_params(self, n=0):
-        assert len(self.requests) > n
-        return dict(self.requests[n].query)
-
-    def assert_requested_once(self):
-        assert len(self.requests) == 1
-
-
-class Handler:
-    def __init__(self):
-        self.handlers = {}
-
-    def register(self, path, callback):
-        h = RequestHandler(callback)
-        self.handlers[path] = h
-        return h
-
-    async def __call__(self, request):
-        return await self.handlers[request.path](request)
-
-
-class TestThetaIndexClientGetPricesAtTime(AioHTTPTestCase):
-    """Tests for ThetaIndexClient.get_prices_at_time()."""
-
-    async def asyncSetUp(self):
-        self.handler = Handler()
-        self.server = RawTestServer(self.handler)
-        await self.server.start_server()
-        self.client = ThetaIndexClient(str(self.server.make_url('/')))
-
-    async def asyncTearDown(self):
-        await self.server.close()
-        await self.client.close()
-
-    def make_url(self, path):
-        return str(self.server.make_url(path))
+    async def get_client(self, url):
+        return ThetaIndexClient(url)
 
     async def test_returns_price_reports(self):
         """Should yield IndexPriceReport objects for each row."""
@@ -195,11 +142,8 @@ class TestThetaIndexClientGetPricesAtTime(AioHTTPTestCase):
             time='16:00:00',
         )]
 
-        # Should have split into multiple requests
         assert len(ranges_seen) > 1
-        # First chunk starts at requested start date
         assert ranges_seen[0][0] == '20240101'
-        # Last chunk ends at or before requested end date
         assert ranges_seen[-1][1] <= '20240331'
 
     async def test_empty_response(self):

@@ -635,7 +635,7 @@ class ThetaIndexClient(_ThetaClient):
         start_date: DateValue,
         end_date: DateValue,
         time: TimeValue,
-    ) -> AsyncGenerator['IndexPriceReport', None]:
+    ) -> AsyncGenerator[IndexPriceReport, None]:
         """
         Get index price at a specific time of day for a range of dates.
 
@@ -662,7 +662,7 @@ class ThetaIndexClient(_ThetaClient):
 
     async def _gen_index_prices(
         self, symbol: str, gen: AsyncGenerator[Dict[str, str], None]
-    ) -> AsyncGenerator['IndexPriceReport', None]:
+    ) -> AsyncGenerator[IndexPriceReport, None]:
         async for data in gen:
             parsed = parse_index_price_report(data)
             if parsed['price'] != 0:
@@ -695,12 +695,10 @@ class ThetaIndexClient(_ThetaClient):
             split_days = self.date_range_params(7)
 
         gen = self.stream_data('index', 'history', 'price', params_gen=split_days, **params)
-        async for data in gen:
-            parsed = parse_index_price_report(data)
-            # TODO: at least for SPX (not quoted off hours), I get $0 quotes
-            # starting at midnight.
-            if parsed['price'] != 0:
-                yield IndexPriceReport(entity=Index.create(symbol=symbol), **parsed)
+        # TODO: at least for SPX (not quoted off hours), I get $0 quotes
+        # starting at midnight.
+        async for report in self._gen_index_prices(symbol, gen):
+            yield report
 
 
 class ThetaClient:
