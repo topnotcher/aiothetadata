@@ -271,6 +271,7 @@ class ThetaOptionClient(_ThetaClient):
         self, request: str, *, symbol: str, expiration: DateValue,
         start_date: str, end_date: str, time: str,
         strike: Optional[PriceValue]=None, right: Optional[OptionRight],
+        limit: Optional[int]=None,
     ) -> Tuple[Dict[str, Any], AsyncGenerator[Dict[str, str], None]]:
 
         params = {
@@ -289,6 +290,9 @@ class ThetaOptionClient(_ThetaClient):
         else:
             days = 5
 
+        if limit:
+            params['strike_range'] = limit
+
         split_days = self.date_range_params(days)
 
         return params, self.stream_data('option', 'at_time', request,  params_gen=split_days, **params)
@@ -302,20 +306,20 @@ class ThetaOptionClient(_ThetaClient):
 
     def _get_quotes_at_time(
         self, symbol: str, expiration: DateValue, start_date: str, end_date: str, time: str,
-        strike: Optional[PriceValue]=None, right: Optional[OptionRight]=None,
+        strike: Optional[PriceValue]=None, right: Optional[OptionRight]=None, limit: Optional[int]=None,
     ) -> AsyncGenerator[Quote, None]:
 
         params, gen = self._get_at_time(
             request='quote', symbol=symbol, expiration=expiration, strike=strike,
-            right=right, start_date=start_date, end_date=end_date, time=time,
+            right=right, start_date=start_date, end_date=end_date, time=time, limit=limit,
         )
 
         return self._gen_quotes(params, gen)
 
     def get_quotes_at_time(
-        self, symbol: str, expiration: DateValue, strike: PriceValue,
-        right: OptionRight, start_date: DateValue, end_date: DateValue,
-        time: TimeValue,
+        self, symbol: str, expiration: DateValue, start_date: DateValue,
+        end_date: DateValue, time: TimeValue, strike: Optional[PriceValue]=None,
+        right: Optional[OptionRight]=None, limit: Optional[int]=None,
     ) -> AsyncGenerator[Quote, None]:
         """
         Get quotes at a specific time of day for a range of days.
@@ -326,7 +330,7 @@ class ThetaOptionClient(_ThetaClient):
 
         return self._get_quotes_at_time(
             symbol=symbol, expiration=expiration, strike=strike, right=right,
-            start_date=start_date, end_date=end_date, time=time,
+            start_date=start_date, end_date=end_date, time=time, limit=limit,
         )
 
     async def get_quote_at_time(
