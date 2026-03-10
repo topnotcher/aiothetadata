@@ -519,6 +519,7 @@ class ThetaOptionClient(_ThetaClient):
         order: GreeksOrder = GreeksOrder.FIRST,
         strike: Optional[PriceValue] = None,
         right: Optional[OptionRight] = None,
+        limit: Optional[int] = None,
     ) -> AsyncGenerator[FirstOrderGreeks, None]:
         """Get a greeks snapshot for option contracts.
 
@@ -533,8 +534,8 @@ class ThetaOptionClient(_ThetaClient):
         :param symbol: The underlying symbol (e.g. ``'SPXW'``).
         :param expiration: The option expiration date.
         :param order: The order of greeks to retrieve.
-        :param strike: Strike price; required when ``right`` is specified.
-        :param right: Option right; required when ``strike`` is specified.
+        :param strike: Strike price
+        :param right: Option right
         :yields: :class:`~.FirstOrderGreeks` objects.
         """
         params = {
@@ -547,6 +548,9 @@ class ThetaOptionClient(_ThetaClient):
 
         if right is not None:
             params['right'] = right
+
+        if limit is not None:
+            params['strike_range'] = limit
 
         gen = self.stream_data('option', 'snapshot', 'greeks', order.value, **params)
 
@@ -570,6 +574,65 @@ class ThetaOptionClient(_ThetaClient):
         """
         gen = self.get_greeks_snapshot(symbol, expiration, order, strike, right)
         return await anext(gen)
+
+    async def get_historical_greeks(self,
+        symbol: str, expiration: DateValue, interval: int | str | Interval, *,
+        strike: Optional[PriceValue]=None, right: Optional[OptionRight]=None,
+        start_date: Optional[DateValue]=None, end_date: Optional[DateValue]=None,
+        date: Optional[DateValue]=None, start_time: Optional[TimeValue]=None,
+        end_time: Optional[TimeValue]=None, order: GreeksOrder=GreeksOrder.FIRST,
+    ) -> AsyncGenerator[FirstOrderGreeks, None]:
+        """Get historical greeks for a specific option contract.
+
+        :param symbol: The underlying symbol.
+        :param expiration: The option expiration date.
+        :param interval: An interval in milliseconds, a string like ``15m``,
+            or an :class:`~.Interval
+        :param strike: The strike price. Optional if fetching greeks for all.
+        :param right: The option right. Optional if fetching greeks for all.
+        :param start_date: The first date to get greeks for. Optional if
+            fetching a single date.
+        :param end_date: The last date to get greeks for.
+        :param date: The specific date to get greeks for. Optional if fetching
+            a date range.
+
+        """
+        interval_obj = Interval.parse(interval)
+
+        params = {
+            'symbol': symbol,
+            'expiration': format_date(expiration),
+            'interval': interval_obj,
+        }
+
+        if date:
+            params['date'] = format_date(date)
+
+        elif start_date and end_date:
+            params['start_date'] = format_date(start_date)
+            params['end_date'] = format_date(end_date)
+
+        else:
+            raise ValueError('Must specify either date or start_date and end_date')
+
+        if strike:
+            params['strike'] = format_price(strike)
+
+        if right:
+            params['right'] = right
+
+        if start_time:
+            params['start_time'] = format_time(start_time)
+
+        if end_time:
+            params['end_time'] = format_time(end_time)
+
+        gen = self.stream_data('option', 'history', 'greeks', order.value, **params)
+
+        async for row in gen:
+            parsed = parse_first_order_greeks(row)
+            self._populate_entity_params(params, parsed)
+            yield FirstOrderGreeks(**parsed)
 
 
 class ThetaStockClient(_ThetaClient):
