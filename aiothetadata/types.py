@@ -112,6 +112,10 @@ class Quote(BaseFinancialInfo):
     ask_exchange: Exchange
     ask_condition: QuoteCondition
 
+    @property
+    def mid(self) -> decimal.Decimal:
+        return round((self.bid + self.ask) / 2, 2)
+
 
 @dataclass(slots=True, frozen=True)
 class Trade(BaseFinancialInfo):
