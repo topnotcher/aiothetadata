@@ -162,6 +162,22 @@ class TestThetaIndexClientGetPricesAtTime(BaseThetaClientTest):
 
         assert results == []
 
+    async def test_no_data_472_yields_nothing(self):
+        """472 (no data) should yield no results, not raise."""
+        async def no_data(request):
+            from aiohttp import web
+            return web.Response(status=472, text='No data found for your request')
+
+        self.handler.register('/v3/index/at_time/price', no_data)
+
+        results = [r async for r in self.client.get_prices_at_time(
+            symbol='SPX',
+            start_date=20250404,
+            end_date=20250404,
+            time='10:00:00',
+        )]
+        assert results == []
+
     async def test_accepts_date_objects(self):
         """Should accept datetime.date objects as start/end dates."""
         rows = [['2024-07-04T16:00:00', '5537.02']]

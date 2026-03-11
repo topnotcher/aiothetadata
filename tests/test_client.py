@@ -509,6 +509,90 @@ class TestThetaOptionClient(BaseThetaClientTest):
         assert g.delta == Decimal('-0.5576')
         assert g.iv == Decimal('0.1741')
 
+    async def test_get_quote_at_time_no_data_returns_none(self):
+        async def no_data(request):
+            return web.Response(status=472, text='No data found for your request')
+
+        self.handler.register('/v3/option/at_time/quote', no_data)
+
+        result = await self.client.get_quote_at_time(
+            symbol='SPXW',
+            expiration=20250407,
+            strike=4985,
+            right=OptionRight.PUT,
+            time='20250404 10:00:00',
+        )
+        assert result is None
+
+    async def test_get_trade_at_time_no_data_returns_none(self):
+        async def no_data(request):
+            return web.Response(status=472, text='No data found for your request')
+
+        self.handler.register('/v3/option/at_time/trade', no_data)
+
+        result = await self.client.get_trade_at_time(
+            symbol='SPXW',
+            expiration=20250407,
+            strike=4985,
+            right=OptionRight.PUT,
+            time='20250404 10:00:00',
+        )
+        assert result is None
+
+    async def test_get_greeks_at_strike_no_data_returns_none(self):
+        async def no_data(request):
+            return web.Response(status=472, text='No data found for your request')
+
+        self.handler.register('/v3/option/snapshot/greeks/first_order', no_data)
+
+        result = await self.client.get_greeks_at_strike(
+            symbol='SPXW',
+            expiration=20250407,
+            strike=4985,
+            right=OptionRight.PUT,
+        )
+        assert result is None
+
+    async def test_get_quotes_at_time_no_data_yields_nothing(self):
+        async def no_data(request):
+            return web.Response(status=472, text='No data found for your request')
+
+        self.handler.register('/v3/option/at_time/quote', no_data)
+
+        results = [q async for q in self.client.get_quotes_at_time(
+            symbol='SPXW',
+            expiration=20250407,
+            start_date=20250404,
+            end_date=20250404,
+            strike=4985,
+            right=OptionRight.PUT,
+            time='10:00:00',
+        )]
+        assert results == []
+
+
+class TestThetaClientHttpErrors(BaseThetaClientTest):
+    """Non-472 errors should still raise ThetaDataHttpError."""
+
+    async def get_client(self, url):
+        return ThetaOptionClient(url)
+
+    async def test_non_472_error_raises(self):
+        async def server_error(request):
+            return web.Response(status=500, text='Internal server error')
+
+        self.handler.register('/v3/option/at_time/quote', server_error)
+
+        with pytest.raises(ThetaDataHttpError) as exc_info:
+            await self.client.get_quote_at_time(
+                symbol='SPXW',
+                expiration=20250407,
+                strike=4985,
+                right=OptionRight.PUT,
+                time='20250404 10:00:00',
+            )
+        assert exc_info.value.status == 500
+
 
 class TestThetaStockClient(BaseThetaClientTest):
     async def get_client(self, url):
@@ -525,3 +609,27 @@ class TestThetaStockClient(BaseThetaClientTest):
         symbols = await self.client.get_symbols()
         handler.assert_csv()
         assert symbols == roots
+
+    async def test_get_quote_at_time_no_data_returns_none(self):
+        async def no_data(request):
+            return web.Response(status=472, text='No data found for your request')
+
+        self.handler.register('/v3/stock/at_time/quote', no_data)
+
+        result = await self.client.get_quote_at_time(
+            symbol='SPY',
+            time='20250404 10:00:00',
+        )
+        assert result is None
+
+    async def test_get_trade_at_time_no_data_returns_none(self):
+        async def no_data(request):
+            return web.Response(status=472, text='No data found for your request')
+
+        self.handler.register('/v3/stock/at_time/trade', no_data)
+
+        result = await self.client.get_trade_at_time(
+            symbol='SPY',
+            time='20250404 10:00:00',
+        )
+        assert result is None

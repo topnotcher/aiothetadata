@@ -191,6 +191,8 @@ class _ThetaClient:
         async with _PagedRequest(self.session, self._build_url(*pcs), params_gen) as pages:
             async for resp in pages:
 
+                if resp.status == 472:
+                    continue
                 if resp.status != 200:
                     await self._handle_http_error(resp)
 
@@ -336,9 +338,9 @@ class ThetaOptionClient(_ThetaClient):
     async def get_quote_at_time(
         self, symbol: str, expiration: DateValue, strike: PriceValue,
         right: OptionRight, time: DateTimeValue,
-    ) -> Quote:
+    ) -> Optional[Quote]:
         """
-        Get an option quote at a given time.
+        Get an option quote at a given time. Returns None if no data.
         """
         quote_date, quote_time = format_date_time(time)
 
@@ -347,7 +349,7 @@ class ThetaOptionClient(_ThetaClient):
             start_date=quote_date, end_date=quote_date, time=quote_time,
         )
 
-        return await anext(gen)
+        return await anext(gen, None)
 
     def get_all_quotes_at_time(
         self, symbol: str, expiration: DateValue, start_date: DateValue, end_date: DateValue, time: TimeValue,
@@ -397,9 +399,9 @@ class ThetaOptionClient(_ThetaClient):
     async def get_trade_at_time(
         self, symbol: str, expiration: DateValue, strike: PriceValue,
         right: OptionRight, time: DateTimeValue,
-    ) -> Trade:
+    ) -> Optional[Trade]:
         """
-        Get an option trades at a given time.
+        Get an option trade at a given time. Returns None if no data.
         """
         trade_date, trade_time = format_date_time(time)
 
@@ -408,7 +410,7 @@ class ThetaOptionClient(_ThetaClient):
             start_date=trade_date, end_date=trade_date, time=trade_time,
         )
 
-        return await anext(gen)
+        return await anext(gen, None)
 
     def get_all_trades_at_time(
         self, symbol: str, expiration: DateValue, start_date: DateValue, end_date: DateValue, time: TimeValue,
@@ -562,7 +564,7 @@ class ThetaOptionClient(_ThetaClient):
     async def get_greeks_at_strike(
         self, symbol: str, expiration: DateValue, strike: PriceValue,
         right: OptionRight, order: GreeksOrder = GreeksOrder.FIRST,
-    ) -> FirstOrderGreeks:
+    ) -> Optional[FirstOrderGreeks]:
         """Get greeks for a specific option contract.
 
         :param symbol: The underlying symbol.
@@ -570,10 +572,10 @@ class ThetaOptionClient(_ThetaClient):
         :param strike: The strike price.
         :param right: The option right.
         :param order: The order of greeks to retrieve.
-        :returns: A :class:`~.FirstOrderGreeks` object.
+        :returns: A :class:`~.FirstOrderGreeks` object, or None if no data.
         """
         gen = self.get_greeks_snapshot(symbol, expiration, order, strike, right)
-        return await anext(gen)
+        return await anext(gen, None)
 
     async def get_historical_greeks(self,
         symbol: str, expiration: DateValue, interval: int | str | Interval, *,
@@ -694,9 +696,9 @@ class ThetaStockClient(_ThetaClient):
         async for quote in gen:
             yield quote
 
-    async def get_quote_at_time(self, symbol: str, time: DateTimeValue) -> Quote:
+    async def get_quote_at_time(self, symbol: str, time: DateTimeValue) -> Optional[Quote]:
         """
-        Get a stock quote at a given time.
+        Get a stock quote at a given time. Returns None if no data.
         """
         quote_date, quote_time = format_date_time(time)
 
@@ -704,7 +706,7 @@ class ThetaStockClient(_ThetaClient):
             symbol=symbol, start_date=quote_date, end_date=quote_date, time=quote_time
         )
 
-        return await anext(gen)
+        return await anext(gen, None)
 
     async def get_trades_at_time(
         self, symbol: str, start_date: DateValue, end_date: DateValue, time: TimeValue,
@@ -723,9 +725,9 @@ class ThetaStockClient(_ThetaClient):
         async for trade in gen:
             yield trade
 
-    async def get_trade_at_time(self, symbol: str, time: DateTimeValue) -> Trade:
+    async def get_trade_at_time(self, symbol: str, time: DateTimeValue) -> Optional[Trade]:
         """
-        Get a stock trade at a given time.
+        Get a stock trade at a given time. Returns None if no data.
         """
         trade_date, trade_time = format_date_time(time)
 
@@ -733,7 +735,7 @@ class ThetaStockClient(_ThetaClient):
             symbol=symbol, start_date=trade_date, end_date=trade_date, time=trade_time
         )
 
-        return await anext(gen)
+        return await anext(gen, None)
 
     async def get_eod_report(self, symbol: str, date: DateValue) -> EodReport:
 
