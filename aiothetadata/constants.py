@@ -242,6 +242,7 @@ class QuoteCondition(enum.IntEnum):
             return code
 
 _EXCHANGE_NAMES = {
+    0: "Unknown",
     1: "Nasdaq Exchange",
     2: "Nasdaq Alternative Display Facility",
     3: "New York Stock Exchange",
@@ -322,6 +323,7 @@ _EXCHANGE_NAMES = {
 }
 
 class Exchange(enum.IntEnum):
+    UNKNOWN = 0
     NQEX = 1
     NQAD = 2
     NYSE = 3
