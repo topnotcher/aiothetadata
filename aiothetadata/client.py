@@ -234,9 +234,9 @@ class _ThetaClient:
 
 
 class ThetaOptionClient(_ThetaClient):
+    """Client for ThetaData option endpoints."""
 
-    async def get_symbols(self) -> List[str]:
-        return [r['symbol'] async for r in self.stream_data('option', 'list', 'symbols')]
+    # ── Internal helpers ─────────────────────────────────────────────────────
 
     @staticmethod
     def _populate_entity_params(request: Dict[str, Any], params: Dict[str, Any]) -> None:
@@ -269,297 +269,242 @@ class ThetaOptionClient(_ThetaClient):
         self._populate_entity_params(request, params)
         return Trade(**params)
 
-    def _get_at_time(
+    def _make_ohlc(self, request: Dict[str, Any], response: Dict[str, Any]) -> OhlcReport:
+        params = parse_ohlc_report(response)
+        self._populate_entity_params(request, params)
+        return OhlcReport(**params)
+
+    async def _gen_quotes(
+        self, params: Dict[str, Any], gen: AsyncGenerator[Dict[str, str], None]
+    ) -> AsyncGenerator[Quote, None]:
+        async for row in gen:
+            yield self._make_quote(params, row)
+
+    async def _gen_trades(
+        self, params: Dict[str, Any], gen: AsyncGenerator[Dict[str, str], None]
+    ) -> AsyncGenerator[Trade, None]:
+        async for row in gen:
+            yield self._make_trade(params, row)
+
+    async def _gen_ohlc(
+        self, params: Dict[str, Any], gen: AsyncGenerator[Dict[str, str], None]
+    ) -> AsyncGenerator[OhlcReport, None]:
+        async for row in gen:
+            yield self._make_ohlc(params, row)
+
+    def _at_time_params(
         self, request: str, *, symbol: str, expiration: DateValue,
         start_date: str, end_date: str, time: str,
-        strike: Optional[PriceValue]=None, right: Optional[OptionRight],
-        limit: Optional[int]=None,
+        strike: Optional[PriceValue] = None, right: Optional[OptionRight] = None,
+        limit: Optional[int] = None,
     ) -> Tuple[Dict[str, Any], AsyncGenerator[Dict[str, str], None]]:
-
-        params = {
+        params: Dict[str, Any] = {
             'symbol': symbol,
             'expiration': format_date(expiration),
             'start_date': start_date,
             'end_date': end_date,
             'time_of_day': time,
         }
-
         if strike and right:
             params['strike'] = format_price(strike)
             params['right'] = right
             days = 30
-
         else:
             days = 5
-
         if limit:
             params['strike_range'] = limit
-
-        split_days = self.date_range_params(days)
-
-        return params, self.stream_data('option', 'at_time', request,  params_gen=split_days, **params)
-
-    async def _gen_quotes(
-        self, params: Dict[str, Any], gen: AsyncGenerator[Dict[str, str], None]
-    ) -> AsyncGenerator[Quote, None]:
-
-        async for row in gen:
-            yield self._make_quote(params, row)
-
-    def _get_quotes_at_time(
-        self, symbol: str, expiration: DateValue, start_date: str, end_date: str, time: str,
-        strike: Optional[PriceValue]=None, right: Optional[OptionRight]=None, limit: Optional[int]=None,
-    ) -> AsyncGenerator[Quote, None]:
-
-        params, gen = self._get_at_time(
-            request='quote', symbol=symbol, expiration=expiration, strike=strike,
-            right=right, start_date=start_date, end_date=end_date, time=time, limit=limit,
+        return params, self.stream_data(
+            'option', 'at_time', request,
+            params_gen=self.date_range_params(days),
+            **params,
         )
 
-        return self._gen_quotes(params, gen)
+    # ── Discovery ─────────────────────────────────────────────────────────────
 
-    def get_quotes_at_time(
-        self, symbol: str, expiration: DateValue, start_date: DateValue,
-        end_date: DateValue, time: TimeValue, strike: Optional[PriceValue]=None,
-        right: Optional[OptionRight]=None, limit: Optional[int]=None,
-    ) -> AsyncGenerator[Quote, None]:
+    async def get_symbols(self) -> List[str]:
+        """Return all available option root symbols.
+
+        :returns: List of symbol strings (e.g. ``['SPXW', 'AMD', ...]``).
         """
-        Get quotes at a specific time of day for a range of days.
-        """
-        start_date = format_date(start_date)
-        end_date = format_date(end_date)
-        time = format_time(time)
-
-        return self._get_quotes_at_time(
-            symbol=symbol, expiration=expiration, strike=strike, right=right,
-            start_date=start_date, end_date=end_date, time=time, limit=limit,
-        )
-
-    async def get_quote_at_time(
-        self, symbol: str, expiration: DateValue, strike: PriceValue,
-        right: OptionRight, time: DateTimeValue,
-    ) -> Optional[Quote]:
-        """
-        Get an option quote at a given time. Returns None if no data.
-        """
-        quote_date, quote_time = format_date_time(time)
-
-        gen = self._get_quotes_at_time(
-            symbol=symbol, expiration=expiration, strike=strike, right=right,
-            start_date=quote_date, end_date=quote_date, time=quote_time,
-        )
-
-        return await anext(gen, None)
-
-    def get_all_quotes_at_time(
-        self, symbol: str, expiration: DateValue, start_date: DateValue, end_date: DateValue, time: TimeValue,
-    ) -> AsyncGenerator[Quote, None]:
-        """
-        Get quotes at a specific time of day for all contracts for a range of
-        days.
-        """
-        start_date = format_date(start_date)
-        end_date = format_date(end_date)
-        time = format_time(time)
-
-        return self._get_quotes_at_time(
-            symbol=symbol, expiration=expiration, start_date=start_date, end_date=end_date, time=time
-        )
-
-    async def _get_trades_at_time(
-        self, symbol: str, expiration: DateValue, start_date: str, end_date: str, time: str,
-        strike: Optional[PriceValue]=None, right: Optional[OptionRight]=None,
-    ) -> AsyncGenerator[Trade, None]:
-
-        params, gen = self._get_at_time(
-            request='trade', symbol=symbol, expiration=expiration, strike=strike,
-            right=right, start_date=start_date, end_date=end_date, time=time,
-        )
-
-        async for row in gen:
-            yield self._make_trade(params, row)
-
-    def get_trades_at_time(
-        self, symbol: str, expiration: DateValue, strike: PriceValue,
-        right: OptionRight, start_date: DateValue, end_date: DateValue,
-        time: TimeValue,
-    ) -> AsyncGenerator[Trade, None]:
-        """
-        Get trades at a specific time of day for a range of days.
-        """
-        start_date = format_date(start_date)
-        end_date = format_date(end_date)
-        time = format_time(time)
-
-        return self._get_trades_at_time(
-            symbol=symbol, expiration=expiration, strike=strike, right=right,
-            start_date=start_date, end_date=end_date, time=time
-        )
-
-    async def get_trade_at_time(
-        self, symbol: str, expiration: DateValue, strike: PriceValue,
-        right: OptionRight, time: DateTimeValue,
-    ) -> Optional[Trade]:
-        """
-        Get an option trade at a given time. Returns None if no data.
-        """
-        trade_date, trade_time = format_date_time(time)
-
-        gen = self._get_trades_at_time(
-            symbol=symbol, expiration=expiration, strike=strike, right=right,
-            start_date=trade_date, end_date=trade_date, time=trade_time,
-        )
-
-        return await anext(gen, None)
-
-    def get_all_trades_at_time(
-        self, symbol: str, expiration: DateValue, start_date: DateValue, end_date: DateValue, time: TimeValue,
-    ) -> AsyncGenerator[Trade, None]:
-        """
-        Get trades at a specific time of day for all contracts for a range of
-        days.
-        """
-        start_date = format_date(start_date)
-        end_date = format_date(end_date)
-        time = format_time(time)
-
-        return self._get_trades_at_time(
-            symbol=symbol, expiration=expiration, start_date=start_date, end_date=end_date, time=time
-        )
-
-    async def get_eod_report(
-        self, symbol: str, expiration: DateValue, strike: PriceValue,
-        right: OptionRight, date: DateValue,
-    ) -> EodReport:
-
-        report_date = format_date(date)
-
-        params = {
-            'symbol': symbol,
-            'start_date': report_date,
-            'end_date': report_date,
-            'expiration': format_date(expiration),
-            'strike': format_price(strike),
-            'right': right,
-        }
-
-        result = (await self.get_data('option', 'history', 'eod', **params))[0]
-        report = parse_eod_report(result)
-        self._populate_entity_params(params, report)
-
-        return EodReport(**report)
-
-    def get_historical_quotes(
-        self, symbol: str, expiration: DateValue, strike: PriceValue,
-        right: OptionRight, start_date: DateValue, end_date: DateValue,
-        start_time: TimeValue, end_time: TimeValue, interval: int | str | Interval,
-    ) -> AsyncGenerator[Quote, None]:
-        """
-        Get all quotes for the specified instrument in a given time range for a
-        range of days.
-
-        :param symbol: The symbol.
-        :param expiration: The option expiration.
-        :param strike: The option strike.
-        :param right: The option right.
-        :param start_date: The first date to get quotes for.
-        :param end_date: The last date to get quotes for.
-        :param start_time: The starting time to get quotes for.
-        :param end_time: The starting time to get quotes for.
-        :param interval: An interval in milliseconds, a string like ``15m``,
-            or an :class:`~.Interval` object. Use :attr:`~.Interval.TICK` for
-            tick-level quotes. See :meth:`~.Interval.parse`.
-        """
-        interval_obj = Interval.parse(interval)
-
-        params = {
-            'symbol': symbol,
-            'expiration': format_date(expiration),
-            'strike': format_price(strike),
-            'right': right,
-            'start_date': format_date(start_date),
-            'end_date': format_date(end_date),
-            'start_time': format_time(start_time),
-            'end_time': format_time(end_time),
-            'interval': interval_obj,
-        }
-
-        # TODO: for tick level, docs suggest 1 week or 7 days for higher
-        # activity tickers. I could probably base this on the time range as
-        # well as the interval.
-        ms = interval_obj.to_milliseconds()
-        if ms < 2 * 60 * 1000:
-            split_days = self.date_range_params(3)
-
-        else:
-            split_days = self.date_range_params(7)
-
-        gen = self.stream_data('option', 'history', 'quote', params_gen=split_days, **params)
-        return self._gen_quotes(params, gen)
-
-    async def get_strikes(self, symbol: str, expiration: DateValue) -> AsyncGenerator[PriceValue, None]:
-        params = {
-            'symbol': symbol,
-            'expiration': format_date(expiration),
-        }
-
-        gen = self.stream_data('option', 'list', 'strikes', **params)
-        async for row in gen:
-            yield parse_strike(row['strike'])
+        return [r['symbol'] async for r in self.stream_data('option', 'list', 'symbols')]
 
     async def get_expirations(self, symbol: str) -> AsyncGenerator[DateValue, None]:
-        params = {
-            'symbol': symbol,
-        }
+        """Yield all available expiration dates for an option root.
 
-        gen = self.stream_data('option', 'list', 'expirations', **params)
+        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :yields: :class:`datetime.date` objects in ascending order.
+        """
+        gen = self.stream_data('option', 'list', 'expirations', symbol=symbol)
         async for row in gen:
             yield parse_date(row['expiration'])
 
-    async def get_greeks_snapshot(
-        self, symbol: str, expiration: DateValue,
-        order: GreeksOrder = GreeksOrder.FIRST,
+    async def get_strikes(self, symbol: str, expiration: DateValue) -> AsyncGenerator[PriceValue, None]:
+        """Yield all available strikes for a given symbol and expiration.
+
+        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param expiration: Option expiration date.
+        :yields: Strike prices as :class:`decimal.Decimal`.
+        """
+        gen = self.stream_data(
+            'option', 'list', 'strikes',
+            symbol=symbol,
+            expiration=format_date(expiration),
+        )
+        async for row in gen:
+            yield parse_strike(row['strike'])
+
+    # ── Chain methods (base implementations) ─────────────────────────────────
+
+    def get_chain_quotes(
+        self,
+        symbol: str,
+        expiration: DateValue,
+        *,
+        strike: Optional[PriceValue] = None,
+        right: Optional[OptionRight] = None,
+        strike_range: Optional[int] = None,
+        start_date: Optional[DateValue] = None,
+        end_date: Optional[DateValue] = None,
+        time: Optional[TimeValue] = None,
+    ) -> AsyncGenerator[Quote, None]:
+        """Get quotes for option contracts.
+
+        Returns the current snapshot quote for each matching contract when
+        called without date/time arguments. Returns historical point-in-time
+        quotes (one result per contract per trading day) when ``start_date``,
+        ``end_date``, and ``time`` are all provided.
+
+        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param expiration: Option expiration date.
+        :param strike: Filter to a specific strike. Optional.
+        :param right: Filter to a specific right. Optional.
+        :param strike_range: Limit results to N strikes around ATM. Optional.
+        :param start_date: Start of historical date range. Requires ``time``.
+        :param end_date: End of historical date range. Requires ``time``.
+        :param time: Time of day for historical lookup. If omitted, returns
+            current snapshot data.
+        :returns: Async generator of :class:`~.Quote` objects.
+        """
+        if start_date is not None or end_date is not None or time is not None:
+            params, gen = self._at_time_params(
+                'quote',
+                symbol=symbol, expiration=expiration,
+                start_date=format_date(start_date),
+                end_date=format_date(end_date),
+                time=format_time(time),
+                strike=strike, right=right, limit=strike_range,
+            )
+        else:
+            params: Dict[str, Any] = {
+                'symbol': symbol,
+                'expiration': format_date(expiration),
+            }
+            if strike is not None:
+                params['strike'] = format_price(strike)
+            if right is not None:
+                params['right'] = right
+            if strike_range is not None:
+                params['strike_range'] = strike_range
+            gen = self.stream_data('option', 'snapshot', 'quote', **params)
+
+        return self._gen_quotes(params, gen)
+
+    def get_chain_trades(
+        self,
+        symbol: str,
+        expiration: DateValue,
+        *,
+        strike: Optional[PriceValue] = None,
+        right: Optional[OptionRight] = None,
+        start_date: Optional[DateValue] = None,
+        end_date: Optional[DateValue] = None,
+        time: Optional[TimeValue] = None,
+    ) -> AsyncGenerator[Trade, None]:
+        """Get trades for option contracts.
+
+        Returns the current snapshot last trade for each matching contract when
+        called without date/time arguments. Returns historical point-in-time
+        trades (one result per contract per trading day) when ``start_date``,
+        ``end_date``, and ``time`` are all provided.
+
+        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param expiration: Option expiration date.
+        :param strike: Filter to a specific strike. Optional.
+        :param right: Filter to a specific right. Optional.
+        :param start_date: Start of historical date range. Requires ``time``.
+        :param end_date: End of historical date range. Requires ``time``.
+        :param time: Time of day for historical lookup. If omitted, returns
+            current snapshot data.
+        :returns: Async generator of :class:`~.Trade` objects.
+        """
+        if start_date is not None or end_date is not None or time is not None:
+            params, gen = self._at_time_params(
+                'trade',
+                symbol=symbol, expiration=expiration,
+                start_date=format_date(start_date),
+                end_date=format_date(end_date),
+                time=format_time(time),
+                strike=strike, right=right,
+            )
+        else:
+            params = {
+                'symbol': symbol,
+                'expiration': format_date(expiration),
+            }
+            if strike is not None:
+                params['strike'] = format_price(strike)
+            if right is not None:
+                params['right'] = right
+            gen = self.stream_data('option', 'snapshot', 'trade', **params)
+
+        return self._gen_trades(params, gen)
+
+    def get_chain_greeks(
+        self,
+        symbol: str,
+        expiration: DateValue,
+        *,
         strike: Optional[PriceValue] = None,
         right: Optional[OptionRight] = None,
         limit: Optional[int] = None,
+        order: GreeksOrder = GreeksOrder.FIRST,
     ) -> AsyncGenerator[FirstOrderGreeks, None]:
-        """Get a greeks snapshot for option contracts.
-
-        If ``strike`` and ``right`` are specified, yields greeks for that
-        specific contract only. If omitted, yields greeks for all contracts
-        with the given expiration.
+        """Get current greeks for option contracts.
 
         .. note::
             Only :attr:`~.GreeksOrder.FIRST` is available on standard
             subscriptions. Higher orders require a professional subscription.
 
-        :param symbol: The underlying symbol (e.g. ``'SPXW'``).
-        :param expiration: The option expiration date.
+        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param expiration: Option expiration date.
+        :param strike: Filter to a specific strike. Optional.
+        :param right: Filter to a specific right. Optional.
+        :param limit: Limit results to N strikes around ATM. Optional.
         :param order: The order of greeks to retrieve.
-        :param strike: Strike price
-        :param right: Option right
-        :yields: :class:`~.FirstOrderGreeks` objects.
+        :returns: Async generator of :class:`~.FirstOrderGreeks` objects.
         """
-        params = {
+        params: Dict[str, Any] = {
             'symbol': symbol,
             'expiration': format_date(expiration),
         }
-
         if strike is not None:
             params['strike'] = format_price(strike)
-
         if right is not None:
             params['right'] = right
-
         if limit is not None:
             params['strike_range'] = limit
 
         gen = self.stream_data('option', 'snapshot', 'greeks', order.value, **params)
 
-        async for row in gen:
-            parsed = parse_first_order_greeks(row)
-            self._populate_entity_params(params, parsed)
-            yield FirstOrderGreeks(**parsed)
+        async def _gen() -> AsyncGenerator[FirstOrderGreeks, None]:
+            async for row in gen:
+                parsed = parse_first_order_greeks(row)
+                self._populate_entity_params(params, parsed)
+                yield FirstOrderGreeks(**parsed)
+
+        return _gen()
+
+    # ── Single-contract convenience methods (Optional[T]) ────────────────────
 
     async def get_quote(
         self,
@@ -567,276 +512,740 @@ class ThetaOptionClient(_ThetaClient):
         expiration: DateValue,
         strike: PriceValue,
         right: OptionRight,
+        *,
+        time: Optional[DateTimeValue] = None,
     ) -> Optional[Quote]:
-        """Get the current quote for a specific option contract.
+        """Get the quote for a specific option contract.
 
-        :param symbol: Option symbol (e.g. ``'SPXW'``).
+        Delegates to :meth:`get_chain_quotes` with ``strike`` and ``right``
+        fixed, returning the first result. See that method for full parameter
+        and overload documentation.
+
+        :param symbol: Option root symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
         :param strike: Strike price.
         :param right: Option right.
+        :param time: If provided, returns the historical quote at this time.
+            If omitted, returns the current snapshot quote.
         :returns: :class:`~.Quote`, or ``None`` if no data.
         """
-        params = {
+        if time is not None:
+            date_str, time_str = format_date_time(time)
+            params, raw_gen = self._at_time_params(
+                'quote',
+                symbol=symbol, expiration=expiration,
+                start_date=date_str, end_date=date_str, time=time_str,
+                strike=strike, right=right,
+            )
+            gen = self._gen_quotes(params, raw_gen)
+        else:
+            gen = self.get_chain_quotes(symbol, expiration, strike=strike, right=right)
+        return await anext(gen, None)
+
+    async def get_last_trade(
+        self,
+        symbol: str,
+        expiration: DateValue,
+        strike: PriceValue,
+        right: OptionRight,
+        *,
+        time: Optional[DateTimeValue] = None,
+    ) -> Optional[Trade]:
+        """Get the last trade for a specific option contract.
+
+        Delegates to :meth:`get_chain_trades` with ``strike`` and ``right``
+        fixed, returning the first result.
+
+        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param expiration: Option expiration date.
+        :param strike: Strike price.
+        :param right: Option right.
+        :param time: If provided, returns the historical last trade at this
+            time. If omitted, returns the current snapshot last trade.
+        :returns: :class:`~.Trade`, or ``None`` if no data.
+        """
+        if time is not None:
+            date_str, time_str = format_date_time(time)
+            params, raw_gen = self._at_time_params(
+                'trade',
+                symbol=symbol, expiration=expiration,
+                start_date=date_str, end_date=date_str, time=time_str,
+                strike=strike, right=right,
+            )
+            gen = self._gen_trades(params, raw_gen)
+        else:
+            gen = self.get_chain_trades(symbol, expiration, strike=strike, right=right)
+        return await anext(gen, None)
+
+    async def get_greeks(
+        self,
+        symbol: str,
+        expiration: DateValue,
+        strike: PriceValue,
+        right: OptionRight,
+        *,
+        order: GreeksOrder = GreeksOrder.FIRST,
+    ) -> Optional[FirstOrderGreeks]:
+        """Get current greeks for a specific option contract.
+
+        Delegates to :meth:`get_chain_greeks` with ``strike`` and ``right``
+        fixed, returning the first result.
+
+        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param expiration: Option expiration date.
+        :param strike: Strike price.
+        :param right: Option right.
+        :param order: The order of greeks to retrieve.
+        :returns: :class:`~.FirstOrderGreeks`, or ``None`` if no data.
+        """
+        return await anext(
+            self.get_chain_greeks(symbol, expiration, strike=strike, right=right, order=order),
+            None,
+        )
+
+    async def get_ohlc(
+        self,
+        symbol: str,
+        expiration: DateValue,
+        strike: PriceValue,
+        right: OptionRight,
+    ) -> Optional[OhlcReport]:
+        """Get the current day OHLC report for a specific option contract.
+
+        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param expiration: Option expiration date.
+        :param strike: Strike price.
+        :param right: Option right.
+        :returns: :class:`~.OhlcReport`, or ``None`` if no data.
+        """
+        params: Dict[str, Any] = {
             'symbol': symbol,
             'expiration': format_date(expiration),
             'strike': format_price(strike),
             'right': right,
         }
-        gen = self._gen_quotes(params, self.stream_data('option', 'snapshot', 'quote', **params))
+        gen = self._gen_ohlc(params, self.stream_data('option', 'snapshot', 'ohlc', **params))
         return await anext(gen, None)
 
-    def get_chain_quotes(
+    # ── Multi-day at-time series ──────────────────────────────────────────────
+
+    def get_quotes(
         self,
         symbol: str,
         expiration: DateValue,
+        strike: PriceValue,
+        right: OptionRight,
+        *,
+        start_date: DateValue,
+        end_date: DateValue,
+        time: TimeValue,
     ) -> AsyncGenerator[Quote, None]:
-        """Get current quotes for all contracts for a given expiration.
+        """Get quotes for a specific contract at the same time across a date range.
 
-        :param symbol: Option symbol (e.g. ``'SPXW'``).
+        Returns one :class:`~.Quote` per trading day — the quote nearest to
+        but not after ``time`` on each day.
+
+        :param symbol: Option root symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
+        :param strike: Strike price.
+        :param right: Option right.
+        :param start_date: First date in the range.
+        :param end_date: Last date in the range.
+        :param time: Time of day to sample on each date.
         :returns: Async generator of :class:`~.Quote` objects.
         """
-        params = {
-            'symbol': symbol,
-            'expiration': format_date(expiration),
-        }
-        return self._gen_quotes(params, self.stream_data('option', 'snapshot', 'quote', **params))
+        return self.get_chain_quotes(
+            symbol, expiration,
+            strike=strike, right=right,
+            start_date=start_date, end_date=end_date, time=time,
+        )
 
-    async def get_greeks_at_strike(
-        self, symbol: str, expiration: DateValue, strike: PriceValue,
-        right: OptionRight, order: GreeksOrder = GreeksOrder.FIRST,
-    ) -> Optional[FirstOrderGreeks]:
-        """Get greeks for a specific option contract.
+    def get_trades(
+        self,
+        symbol: str,
+        expiration: DateValue,
+        strike: PriceValue,
+        right: OptionRight,
+        *,
+        start_date: DateValue,
+        end_date: DateValue,
+        time: TimeValue,
+    ) -> AsyncGenerator[Trade, None]:
+        """Get trades for a specific contract at the same time across a date range.
 
-        :param symbol: The underlying symbol.
-        :param expiration: The option expiration date.
-        :param strike: The strike price.
-        :param right: The option right.
-        :param order: The order of greeks to retrieve.
-        :returns: A :class:`~.FirstOrderGreeks` object, or None if no data.
+        Returns one :class:`~.Trade` per trading day — the trade nearest to
+        but not after ``time`` on each day.
+
+        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param expiration: Option expiration date.
+        :param strike: Strike price.
+        :param right: Option right.
+        :param start_date: First date in the range.
+        :param end_date: Last date in the range.
+        :param time: Time of day to sample on each date.
+        :returns: Async generator of :class:`~.Trade` objects.
         """
-        gen = self.get_greeks_snapshot(symbol, expiration, order, strike, right)
-        return await anext(gen, None)
+        return self.get_chain_trades(
+            symbol, expiration,
+            strike=strike, right=right,
+            start_date=start_date, end_date=end_date, time=time,
+        )
 
-    async def get_historical_greeks(self,
-        symbol: str, expiration: DateValue, interval: int | str | Interval, *,
-        strike: Optional[PriceValue]=None, right: Optional[OptionRight]=None,
-        start_date: Optional[DateValue]=None, end_date: Optional[DateValue]=None,
-        date: Optional[DateValue]=None, start_time: Optional[TimeValue]=None,
-        end_time: Optional[TimeValue]=None, order: GreeksOrder=GreeksOrder.FIRST,
-    ) -> AsyncGenerator[FirstOrderGreeks, None]:
-        """Get historical greeks for a specific option contract.
+    # ── Historical interval-based generators ─────────────────────────────────
 
-        :param symbol: The underlying symbol.
-        :param expiration: The option expiration date.
-        :param interval: An interval in milliseconds, a string like ``15m``,
-            or an :class:`~.Interval
-        :param strike: The strike price. Optional if fetching greeks for all.
-        :param right: The option right. Optional if fetching greeks for all.
-        :param start_date: The first date to get greeks for. Optional if
-            fetching a single date.
-        :param end_date: The last date to get greeks for.
-        :param date: The specific date to get greeks for. Optional if fetching
-            a date range.
+    def get_historical_quotes(
+        self,
+        symbol: str,
+        expiration: DateValue,
+        strike: PriceValue,
+        right: OptionRight,
+        interval: int | str | Interval,
+        *,
+        start_date: DateValue,
+        end_date: DateValue,
+        start_time: Optional[TimeValue] = None,
+        end_time: Optional[TimeValue] = None,
+    ) -> AsyncGenerator[Quote, None]:
+        """Get interval-sampled historical quotes for a specific option contract.
 
+        Returns quotes aggregated at ``interval`` frequency over the specified
+        date and time range. Use :attr:`~.Interval.TICK` for tick-level data.
+
+        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param expiration: Option expiration date.
+        :param strike: Strike price.
+        :param right: Option right.
+        :param interval: Sampling interval — a string (``'1m'``, ``'15m'``),
+            an :class:`~.Interval` member, or milliseconds as ``int``.
+        :param start_date: First date to include.
+        :param end_date: Last date to include.
+        :param start_time: Earliest time of day to include. Optional.
+        :param end_time: Latest time of day to include. Optional.
+        :returns: Async generator of :class:`~.Quote` objects.
         """
         interval_obj = Interval.parse(interval)
+        params: Dict[str, Any] = {
+            'symbol': symbol,
+            'expiration': format_date(expiration),
+            'strike': format_price(strike),
+            'right': right,
+            'start_date': format_date(start_date),
+            'end_date': format_date(end_date),
+            'interval': interval_obj,
+        }
+        if start_time is not None:
+            params['start_time'] = format_time(start_time)
+        if end_time is not None:
+            params['end_time'] = format_time(end_time)
 
-        params = {
+        ms = interval_obj.to_milliseconds()
+        split_days = self.date_range_params(3 if ms < 2 * 60 * 1000 else 7)
+        return self._gen_quotes(
+            params, self.stream_data('option', 'history', 'quote', params_gen=split_days, **params)
+        )
+
+    def get_historical_ohlc(
+        self,
+        symbol: str,
+        expiration: DateValue,
+        strike: PriceValue,
+        right: OptionRight,
+        interval: str | Interval,
+        *,
+        start_date: DateValue,
+        end_date: DateValue,
+        start_time: Optional[TimeValue] = None,
+        end_time: Optional[TimeValue] = None,
+    ) -> AsyncGenerator[OhlcReport, None]:
+        """Get historical OHLC bars for a specific option contract.
+
+        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param expiration: Option expiration date.
+        :param strike: Strike price.
+        :param right: Option right.
+        :param interval: Bar interval as a string (e.g. ``'1m'``, ``'1h'``).
+            Millisecond integers are not supported by this endpoint.
+        :param start_date: First date to include.
+        :param end_date: Last date to include.
+        :param start_time: Earliest time of day to include. Optional.
+        :param end_time: Latest time of day to include. Optional.
+        :returns: Async generator of :class:`~.OhlcReport` objects.
+        """
+        params: Dict[str, Any] = {
+            'symbol': symbol,
+            'expiration': format_date(expiration),
+            'strike': format_price(strike),
+            'right': right,
+            'start_date': format_date(start_date),
+            'end_date': format_date(end_date),
+            'interval': interval,
+        }
+        if start_time is not None:
+            params['start_time'] = format_time(start_time)
+        if end_time is not None:
+            params['end_time'] = format_time(end_time)
+
+        split_days = self.date_range_params(7)
+        return self._gen_ohlc(
+            params, self.stream_data('option', 'history', 'ohlc', params_gen=split_days, **params)
+        )
+
+    def get_historical_greeks(
+        self,
+        symbol: str,
+        expiration: DateValue,
+        interval: int | str | Interval,
+        *,
+        strike: Optional[PriceValue] = None,
+        right: Optional[OptionRight] = None,
+        start_date: Optional[DateValue] = None,
+        end_date: Optional[DateValue] = None,
+        date: Optional[DateValue] = None,
+        start_time: Optional[TimeValue] = None,
+        end_time: Optional[TimeValue] = None,
+        order: GreeksOrder = GreeksOrder.FIRST,
+    ) -> AsyncGenerator[FirstOrderGreeks, None]:
+        """Get historical greeks for option contracts at a given interval.
+
+        Specify either ``date`` for a single day or ``start_date`` +
+        ``end_date`` for a range. ``strike`` and ``right`` are optional;
+        omitting them returns greeks for all contracts.
+
+        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param expiration: Option expiration date.
+        :param interval: Sampling interval — a string (``'1m'``, ``'15m'``),
+            an :class:`~.Interval` member, or milliseconds as ``int``.
+        :param strike: Strike price. Optional.
+        :param right: Option right. Optional.
+        :param start_date: First date. Mutually exclusive with ``date``.
+        :param end_date: Last date. Requires ``start_date``.
+        :param date: Single date. Mutually exclusive with ``start_date``.
+        :param start_time: Earliest time of day to include. Optional.
+        :param end_time: Latest time of day to include. Optional.
+        :param order: Greeks order (first, second, third). Standard subscriptions
+            support first order only.
+        :returns: Async generator of :class:`~.FirstOrderGreeks` objects.
+        """
+        interval_obj = Interval.parse(interval)
+        params: Dict[str, Any] = {
             'symbol': symbol,
             'expiration': format_date(expiration),
             'interval': interval_obj,
         }
-
         if date:
             params['date'] = format_date(date)
-
         elif start_date and end_date:
             params['start_date'] = format_date(start_date)
             params['end_date'] = format_date(end_date)
-
         else:
             raise ValueError('Must specify either date or start_date and end_date')
-
         if strike:
             params['strike'] = format_price(strike)
-
         if right:
             params['right'] = right
-
         if start_time:
             params['start_time'] = format_time(start_time)
-
         if end_time:
             params['end_time'] = format_time(end_time)
 
         gen = self.stream_data('option', 'history', 'greeks', order.value, **params)
 
-        async for row in gen:
-            parsed = parse_first_order_greeks(row)
-            self._populate_entity_params(params, parsed)
-            yield FirstOrderGreeks(**parsed)
+        async def _gen() -> AsyncGenerator[FirstOrderGreeks, None]:
+            async for row in gen:
+                parsed = parse_first_order_greeks(row)
+                self._populate_entity_params(params, parsed)
+                yield FirstOrderGreeks(**parsed)
+
+        return _gen()
+
+    # ── EOD ───────────────────────────────────────────────────────────────────
+
+    def get_eod(
+        self,
+        symbol: str,
+        expiration: DateValue,
+        *,
+        strike: Optional[PriceValue] = None,
+        right: Optional[OptionRight] = None,
+        start_date: DateValue,
+        end_date: DateValue,
+    ) -> AsyncGenerator[EodReport, None]:
+        """Get end-of-day reports for option contracts over a date range.
+
+        If ``strike`` and ``right`` are provided, returns EOD data for that
+        specific contract. Otherwise returns EOD data for all contracts in
+        the expiration.
+
+        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param expiration: Option expiration date.
+        :param strike: Strike price. Optional — omit for entire chain.
+        :param right: Option right. Optional — omit for entire chain.
+        :param start_date: First date to include.
+        :param end_date: Last date to include.
+        :returns: Async generator of :class:`~.EodReport` objects.
+        """
+        params: Dict[str, Any] = {
+            'symbol': symbol,
+            'expiration': format_date(expiration),
+            'start_date': format_date(start_date),
+            'end_date': format_date(end_date),
+        }
+        if strike is not None:
+            params['strike'] = format_price(strike)
+        if right is not None:
+            params['right'] = right
+
+        split_days = self.date_range_params(30)
+        raw = self.stream_data('option', 'history', 'eod', params_gen=split_days, **params)
+
+        async def _gen() -> AsyncGenerator[EodReport, None]:
+            async for row in raw:
+                parsed = parse_eod_report(row)
+                self._populate_entity_params(params, parsed)
+                yield EodReport(**parsed)
+
+        return _gen()
 
 
 class ThetaStockClient(_ThetaClient):
+    """Client for ThetaData stock endpoints."""
 
-    async def get_symbols(self) -> List[str]:
-        return [r['symbol'] async for r in self.stream_data('stock', 'list', 'symbols')]
+    # ── Internal helpers ─────────────────────────────────────────────────────
 
-    def _get_at_time(
+    def _make_quote(self, symbol: str, row: Dict[str, str]) -> Quote:
+        fields = parse_quote_fields(row)
+        fields.pop('symbol', None)  # symbol is on the entity, not a Quote kwarg
+        return Quote(Stock.create(symbol=symbol), **fields)
+
+    def _make_ohlc(self, symbol: str, row: Dict[str, str]) -> OhlcReport:
+        fields = parse_ohlc_report(row)
+        fields.pop('symbol', None)
+        return OhlcReport(Stock.create(symbol=symbol), **fields)
+
+    def _at_time_stream(
         self, request: str, symbol: str, start_date: str, end_date: str, time: str,
     ) -> AsyncGenerator[Dict[str, str], None]:
-
         params = {
             'symbol': symbol,
             'start_date': start_date,
             'end_date': end_date,
             'time_of_day': time,
         }
+        return self.stream_data('stock', 'at_time', request, params_gen=self.date_range_params(30), **params)
 
-        split_days = self.date_range_params(30)
+    # ── Discovery ─────────────────────────────────────────────────────────────
 
-        return self.stream_data('stock', 'at_time', request, params_gen=split_days, **params)
+    async def get_symbols(self) -> List[str]:
+        """Return all available stock symbols.
 
-    def _make_quote(self, symbol: str, row: Dict[str, str]) -> Quote:
-        fields = parse_quote_fields(row)
-        fields.pop('symbol', None)  # symbol belongs on the entity, not Quote kwargs
-        return Quote(Stock.create(symbol=symbol), **fields)
-
-    async def _get_quotes_at_time(
-        self, symbol: str, start_date: str, end_date: str, time: str,
-    ) -> AsyncGenerator[Quote, None]:
-
-        gen = self._get_at_time(
-            request='quote', symbol=symbol, start_date=start_date, end_date=end_date, time=time,
-        )
-
-        async for row in gen:
-            yield self._make_quote(symbol, row)
-
-    async def _get_trades_at_time(
-        self, symbol: str, start_date: str, end_date: str, time: str,
-    ) -> AsyncGenerator[Trade, None]:
-
-        gen = self._get_at_time(
-            request='trade', symbol=symbol, start_date=start_date, end_date=end_date, time=time,
-        )
-
-        async for row in gen:
-            yield Trade(Stock.create(symbol=symbol), **parse_trade_fields(row))
-
-    async def get_quotes_at_time(
-        self, symbol: str, start_date: DateValue, end_date: DateValue, time: TimeValue,
-    ) -> AsyncGenerator[Quote, None]:
+        :returns: List of symbol strings.
         """
-        Get quotes at a specific time of day for a range of days.
-        """
-        start_date = format_date(start_date)
-        end_date = format_date(end_date)
-        time = format_time(time)
+        return [r['symbol'] async for r in self.stream_data('stock', 'list', 'symbols')]
 
-        gen = self._get_quotes_at_time(
-            symbol=symbol, start_date=start_date, end_date=end_date, time=time,
-        )
-
-        async for quote in gen:
-            yield quote
-
-    async def get_quote_at_time(self, symbol: str, time: DateTimeValue) -> Optional[Quote]:
-        """
-        Get a stock quote at a given time. Returns None if no data.
-        """
-        quote_date, quote_time = format_date_time(time)
-
-        gen = self._get_quotes_at_time(
-            symbol=symbol, start_date=quote_date, end_date=quote_date, time=quote_time
-        )
-
-        return await anext(gen, None)
-
-    async def get_trades_at_time(
-        self, symbol: str, start_date: DateValue, end_date: DateValue, time: TimeValue,
-    ) -> AsyncGenerator[Trade, None]:
-        """
-        Get trades at a specific time of day for a range of days.
-        """
-        start_date = format_date(start_date)
-        end_date = format_date(end_date)
-        time = format_time(time)
-
-        gen = self._get_trades_at_time(
-            symbol=symbol, start_date=start_date, end_date=end_date, time=time,
-        )
-
-        async for trade in gen:
-            yield trade
-
-    async def get_trade_at_time(self, symbol: str, time: DateTimeValue) -> Optional[Trade]:
-        """
-        Get a stock trade at a given time. Returns None if no data.
-        """
-        trade_date, trade_time = format_date_time(time)
-
-        gen = self._get_trades_at_time(
-            symbol=symbol, start_date=trade_date, end_date=trade_date, time=trade_time
-        )
-
-        return await anext(gen, None)
+    # ── Single-item methods (Optional[T]; overloaded on time) ────────────────
 
     async def get_quote(
         self,
         symbol: str,
+        *,
         venue: Optional[str] = None,
+        time: Optional[DateTimeValue] = None,
     ) -> Optional[Quote]:
-        """Get the current quote for a stock.
+        """Get the quote for a stock.
+
+        Returns the current snapshot quote when ``time`` is omitted.
+        Returns the historical quote at the specified time when ``time`` is given.
 
         :param symbol: Stock symbol (e.g. ``'ZBRA'``).
         :param venue: Optional venue override (e.g. ``'utp_cta'`` for 15-min
-            delayed data on the Value subscription).
+            delayed data on the Value subscription). Only used for current quotes.
+        :param time: If provided, returns the historical quote at this time.
+            If omitted, returns the current snapshot quote.
         :returns: :class:`~.Quote`, or ``None`` if no data.
         """
-        params = {'symbol': symbol}
+        if time is not None:
+            date_str, time_str = format_date_time(time)
+            gen = self._at_time_stream('quote', symbol, date_str, date_str, time_str)
+            async for row in gen:
+                return self._make_quote(symbol, row)
+            return None
+
+        params: Dict[str, Any] = {'symbol': symbol}
         if venue is not None:
             params['venue'] = venue
         async for row in self.stream_data('stock', 'snapshot', 'quote', **params):
             return self._make_quote(symbol, row)
         return None
 
-    async def get_eod_report(self, symbol: str, date: DateValue) -> EodReport:
+    async def get_last_trade(
+        self,
+        symbol: str,
+        *,
+        time: Optional[DateTimeValue] = None,
+    ) -> Optional[Trade]:
+        """Get the last trade for a stock.
 
-        report_date = format_date(date)
+        Returns the current snapshot last trade when ``time`` is omitted.
+        Returns the historical last trade at the specified time when ``time`` is given.
 
-        params = {
+        :param symbol: Stock symbol (e.g. ``'ZBRA'``).
+        :param time: If provided, returns the historical trade at this time.
+            If omitted, returns the current snapshot trade.
+        :returns: :class:`~.Trade`, or ``None`` if no data.
+        """
+        if time is not None:
+            date_str, time_str = format_date_time(time)
+            gen = self._at_time_stream('trade', symbol, date_str, date_str, time_str)
+        else:
+            gen = self.stream_data('stock', 'snapshot', 'trade', symbol=symbol)
+
+        async for row in gen:
+            return Trade(Stock.create(symbol=symbol), **parse_trade_fields(row))
+        return None
+
+    async def get_ohlc(
+        self,
+        symbol: str,
+        *,
+        venue: Optional[str] = None,
+    ) -> Optional[OhlcReport]:
+        """Get the current day OHLC report for a stock.
+
+        :param symbol: Stock symbol (e.g. ``'ZBRA'``).
+        :param venue: Optional venue override (e.g. ``'utp_cta'`` for 15-min
+            delayed data on the Value subscription).
+        :returns: :class:`~.OhlcReport`, or ``None`` if no data.
+        """
+        params: Dict[str, Any] = {'symbol': symbol}
+        if venue is not None:
+            params['venue'] = venue
+        async for row in self.stream_data('stock', 'snapshot', 'ohlc', **params):
+            return self._make_ohlc(symbol, row)
+        return None
+
+    # ── Multi-day at-time series ──────────────────────────────────────────────
+
+    async def get_quotes(
+        self,
+        symbol: str,
+        *,
+        start_date: DateValue,
+        end_date: DateValue,
+        time: TimeValue,
+    ) -> AsyncGenerator[Quote, None]:
+        """Get quotes for a stock at the same time across a date range.
+
+        Returns one :class:`~.Quote` per trading day — the quote nearest to
+        but not after ``time`` on each day.
+
+        :param symbol: Stock symbol (e.g. ``'ZBRA'``).
+        :param start_date: First date in the range.
+        :param end_date: Last date in the range.
+        :param time: Time of day to sample on each date.
+        :returns: Async generator of :class:`~.Quote` objects.
+        """
+        gen = self._at_time_stream(
+            'quote', symbol,
+            format_date(start_date), format_date(end_date), format_time(time),
+        )
+        async for row in gen:
+            yield self._make_quote(symbol, row)
+
+    async def get_trades(
+        self,
+        symbol: str,
+        *,
+        start_date: DateValue,
+        end_date: DateValue,
+        time: TimeValue,
+    ) -> AsyncGenerator[Trade, None]:
+        """Get trades for a stock at the same time across a date range.
+
+        Returns one :class:`~.Trade` per trading day — the trade nearest to
+        but not after ``time`` on each day.
+
+        :param symbol: Stock symbol (e.g. ``'ZBRA'``).
+        :param start_date: First date in the range.
+        :param end_date: Last date in the range.
+        :param time: Time of day to sample on each date.
+        :returns: Async generator of :class:`~.Trade` objects.
+        """
+        gen = self._at_time_stream(
+            'trade', symbol,
+            format_date(start_date), format_date(end_date), format_time(time),
+        )
+        async for row in gen:
+            yield Trade(Stock.create(symbol=symbol), **parse_trade_fields(row))
+
+    # ── Historical interval-based generators ─────────────────────────────────
+
+    async def get_historical_ohlc(
+        self,
+        symbol: str,
+        interval: str | Interval,
+        *,
+        start_date: DateValue,
+        end_date: DateValue,
+        start_time: Optional[TimeValue] = None,
+        end_time: Optional[TimeValue] = None,
+        venue: Optional[str] = None,
+    ) -> AsyncGenerator[OhlcReport, None]:
+        """Get historical OHLC bars for a stock.
+
+        :param symbol: Stock symbol (e.g. ``'ZBRA'``).
+        :param interval: Bar interval as a string (e.g. ``'1m'``, ``'1h'``).
+            Millisecond integers are not supported by this endpoint.
+        :param start_date: First date to include.
+        :param end_date: Last date to include.
+        :param start_time: Earliest time of day to include. Optional.
+        :param end_time: Latest time of day to include. Optional.
+        :param venue: Optional venue override. Optional.
+        :returns: Async generator of :class:`~.OhlcReport` objects.
+        """
+        params: Dict[str, Any] = {
             'symbol': symbol,
-            'start_date': report_date,
-            'end_date': report_date,
+            'start_date': format_date(start_date),
+            'end_date': format_date(end_date),
+            'interval': interval,
         }
+        if start_time is not None:
+            params['start_time'] = format_time(start_time)
+        if end_time is not None:
+            params['end_time'] = format_time(end_time)
+        if venue is not None:
+            params['venue'] = venue
 
-        result = (await self.get_data('stock', 'history', 'eod', **params))[0]
-        report = parse_eod_report(result)
+        split_days = self.date_range_params(7)
+        async for row in self.stream_data('stock', 'history', 'ohlc', params_gen=split_days, **params):
+            yield self._make_ohlc(symbol, row)
 
-        return EodReport(Stock.create(symbol=symbol), **report)
+    # ── EOD ───────────────────────────────────────────────────────────────────
+
+    async def get_eod(
+        self,
+        symbol: str,
+        *,
+        start_date: DateValue,
+        end_date: DateValue,
+    ) -> AsyncGenerator[EodReport, None]:
+        """Get end-of-day reports for a stock over a date range.
+
+        :param symbol: Stock symbol (e.g. ``'ZBRA'``).
+        :param start_date: First date to include.
+        :param end_date: Last date to include.
+        :returns: Async generator of :class:`~.EodReport` objects.
+        """
+        params: Dict[str, Any] = {
+            'symbol': symbol,
+            'start_date': format_date(start_date),
+            'end_date': format_date(end_date),
+        }
+        split_days = self.date_range_params(30)
+        async for row in self.stream_data('stock', 'history', 'eod', params_gen=split_days, **params):
+            fields = parse_eod_report(row)
+            fields.pop('symbol', None)
+            yield EodReport(Stock.create(symbol=symbol), **fields)
 
 
 class ThetaIndexClient(_ThetaClient):
+    """Client for ThetaData index endpoints."""
 
-    def get_prices_at_time(
+    # ── Internal helpers ─────────────────────────────────────────────────────
+
+    async def _gen_index_prices(
+        self, symbol: str, gen: AsyncGenerator[Dict[str, str], None]
+    ) -> AsyncGenerator[IndexPriceReport, None]:
+        async for data in gen:
+            parsed = parse_index_price_report(data)
+            if parsed['price'] != 0:  # filter off-hours zero prices
+                yield IndexPriceReport(entity=Index.create(symbol=symbol), **parsed)
+
+    # ── Discovery ─────────────────────────────────────────────────────────────
+
+    async def get_symbols(self) -> List[str]:
+        """Return all available index symbols.
+
+        :returns: List of symbol strings (e.g. ``['SPX', 'NDX', ...]``).
+        """
+        return [r['symbol'] async for r in self.stream_data('index', 'list', 'symbols')]
+
+    async def get_dates(self, symbol: str) -> List[str]:
+        """Return all dates for which data is available for an index.
+
+        :param symbol: Index symbol (e.g. ``'SPX'``).
+        :returns: List of date strings.
+        """
+        return [r['date'] async for r in self.stream_data('index', 'list', 'dates', symbol=symbol)]
+
+    # ── Single-item methods (Optional[T]; overloaded on time) ────────────────
+
+    async def get_price(
         self,
         symbol: str,
+        *,
+        time: Optional[DateTimeValue] = None,
+    ) -> Optional[IndexPriceReport]:
+        """Get the price for an index.
+
+        Returns the current snapshot price when ``time`` is omitted.
+        Returns the historical price at the specified time when ``time`` is given.
+
+        :param symbol: Index symbol (e.g. ``'SPX'``).
+        :param time: If provided, returns the historical price at this time.
+            If omitted, returns the current snapshot price.
+        :returns: :class:`~.IndexPriceReport`, or ``None`` if no data.
+        """
+        if time is not None:
+            date_str, time_str = format_date_time(time)
+            gen = self._gen_index_prices(symbol, self.stream_data(
+                'index', 'at_time', 'price',
+                params_gen=self.date_range_params(30),
+                symbol=symbol,
+                start_date=date_str,
+                end_date=date_str,
+                time_of_day=time_str,
+            ))
+        else:
+            gen = self._gen_index_prices(
+                symbol, self.stream_data('index', 'snapshot', 'price', symbol=symbol)
+            )
+        return await anext(gen, None)
+
+    async def get_ohlc(
+        self,
+        symbol: str,
+    ) -> Optional[OhlcReport]:
+        """Get the current day OHLC report for an index.
+
+        :param symbol: Index symbol (e.g. ``'SPX'``).
+        :returns: :class:`~.OhlcReport`, or ``None`` if no data.
+        """
+        async for row in self.stream_data('index', 'snapshot', 'ohlc', symbol=symbol):
+            fields = parse_ohlc_report(row)
+            fields.pop('symbol', None)
+            return OhlcReport(Index.create(symbol=symbol), **fields)
+        return None
+
+    # ── Multi-day at-time series ──────────────────────────────────────────────
+
+    def get_prices(
+        self,
+        symbol: str,
+        *,
         start_date: DateValue,
         end_date: DateValue,
         time: TimeValue,
     ) -> AsyncGenerator[IndexPriceReport, None]:
-        """
-        Get index price at a specific time of day for a range of dates.
+        """Get index prices at the same time across a date range.
 
-        Useful for fetching daily close prices (e.g. time='16:00:00') across
-        a date range without pulling full intraday bars.
+        Returns one :class:`~.IndexPriceReport` per trading day — the price
+        nearest to but not after ``time`` on each day.
 
         :param symbol: Index symbol (e.g. ``'SPX'``).
-        :param start_date: Start of date range.
-        :param end_date: End of date range.
-        :param time: Time of day (e.g. ``'16:00:00'`` for close).
+        :param start_date: First date in the range.
+        :param end_date: Last date in the range.
+        :param time: Time of day to sample on each date (e.g. ``'16:00:00'``
+            for daily close).
         :returns: Async generator of :class:`~.IndexPriceReport` objects.
         """
         params = {
@@ -851,55 +1260,75 @@ class ThetaIndexClient(_ThetaClient):
             self.stream_data('index', 'at_time', 'price', params_gen=split_days, **params),
         )
 
-    async def _gen_index_prices(
-        self, symbol: str, gen: AsyncGenerator[Dict[str, str], None]
-    ) -> AsyncGenerator[IndexPriceReport, None]:
-        async for data in gen:
-            parsed = parse_index_price_report(data)
-            if parsed['price'] != 0:
-                yield IndexPriceReport(entity=Index.create(symbol=symbol), **parsed)
+    # ── Historical interval-based generators ─────────────────────────────────
 
-    async def get_price(self, symbol: str) -> Optional[IndexPriceReport]:
-        """Get the current price for an index.
+    def get_historical_prices(
+        self,
+        symbol: str,
+        interval: int | str | Interval,
+        *,
+        start_date: DateValue,
+        end_date: DateValue,
+    ) -> AsyncGenerator[IndexPriceReport, None]:
+        """Get historical index prices at a given interval.
+
+        Returns price-only data (no OHLC). For OHLC bars use
+        :meth:`get_historical_ohlc`.
+
+        Zero-price records (off-hours placeholders) are filtered out
+        automatically.
 
         :param symbol: Index symbol (e.g. ``'SPX'``).
-        :returns: :class:`~.IndexPriceReport`, or ``None`` if no data.
+        :param interval: Sampling interval — a string (``'1m'``, ``'15m'``),
+            an :class:`~.Interval` member, or milliseconds as ``int``.
+        :param start_date: First date to include.
+        :param end_date: Last date to include.
+        :returns: Async generator of :class:`~.IndexPriceReport` objects.
         """
-        params = {'symbol': symbol}
-        gen = self._gen_index_prices(symbol, self.stream_data('index', 'snapshot', 'price', **params))
-        return await anext(gen, None)
-
-    async def get_historical_prices(
-        self, symbol: str, start_date: DateValue, end_date: DateValue,
-        interval: int | str | Interval, hours: TradingHours=TradingHours.REGULAR,
-    ) -> AsyncGenerator[IndexPriceReport, None]:
-
         interval_obj = Interval.parse(interval)
-
         params = {
             'symbol': symbol,
             'start_date': format_date(start_date),
             'end_date': format_date(end_date),
             'interval': interval_obj,
         }
-
-        # TODO: v3 API handles RTH filtering differently or may not need it
-        # For now, omitting rth parameter
-
-        # TODO: copied this from options. Need to come up with better numbers
-        # and generalize.
         ms = interval_obj.to_milliseconds()
-        if ms <= 2 * 60 * 1000:
-            split_days = self.date_range_params(3)
+        split_days = self.date_range_params(3 if ms <= 2 * 60 * 1000 else 7)
+        return self._gen_index_prices(
+            symbol,
+            self.stream_data('index', 'history', 'price', params_gen=split_days, **params),
+        )
 
-        else:
-            split_days = self.date_range_params(7)
+    async def get_historical_ohlc(
+        self,
+        symbol: str,
+        interval: str | Interval,
+        *,
+        start_date: DateValue,
+        end_date: DateValue,
+    ) -> AsyncGenerator[OhlcReport, None]:
+        """Get historical OHLC bars for an index.
 
-        gen = self.stream_data('index', 'history', 'price', params_gen=split_days, **params)
-        # TODO: at least for SPX (not quoted off hours), I get $0 quotes
-        # starting at midnight.
-        async for report in self._gen_index_prices(symbol, gen):
-            yield report
+        For price-only data use :meth:`get_historical_prices`.
+
+        :param symbol: Index symbol (e.g. ``'SPX'``).
+        :param interval: Bar interval as a string (e.g. ``'1m'``, ``'1h'``).
+            Millisecond integers are not supported by this endpoint.
+        :param start_date: First date to include.
+        :param end_date: Last date to include.
+        :returns: Async generator of :class:`~.OhlcReport` objects.
+        """
+        params = {
+            'symbol': symbol,
+            'start_date': format_date(start_date),
+            'end_date': format_date(end_date),
+            'interval': interval,
+        }
+        split_days = self.date_range_params(7)
+        async for row in self.stream_data('index', 'history', 'ohlc', params_gen=split_days, **params):
+            fields = parse_ohlc_report(row)
+            fields.pop('symbol', None)
+            yield OhlcReport(Index.create(symbol=symbol), **fields)
 
 
 class ThetaClient:
