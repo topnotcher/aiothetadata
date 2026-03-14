@@ -152,8 +152,8 @@ def parse_trade_fields(data: Dict[str, str]) -> Dict[str, Any]:
 
     parsed['time'] = parse_timestamp(data['timestamp'])
 
-    for field in ('exchange', ):
-        parsed[field] = Exchange(int(data[field]))
+    if 'exchange' in data:
+        parsed['exchange'] = Exchange(int(data['exchange']))
 
     if 'strike' in data:
         parsed['strike'] = parse_strike(data['strike'])

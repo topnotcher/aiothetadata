@@ -122,11 +122,11 @@ class Quote(BaseFinancialInfo):
 class Trade(BaseFinancialInfo):
     time: datetime.datetime
 
-    exchange: Exchange
     conditions: Tuple[QuoteCondition]
     price: decimal.Decimal
     sequence: int
     size: int
+    exchange: Exchange | None = None
 
     @property
     def condition(self) -> QuoteCondition:
