@@ -25,12 +25,9 @@ async def _test_discovery(client):
     async with shield('get_symbols()'):
         symbols = await client.index.get_symbols()
         assert len(symbols) > 0
-        non_empty = [s for s in symbols if s]
-        ok('count (total)', len(symbols))
-        ok('count (non-empty)', len(non_empty))
-        ok('sample (non-empty)', non_empty[:3])
-        if len(non_empty) < len(symbols):
-            ok('NOTE', f'{len(symbols) - len(non_empty)} empty symbol(s) returned by API — thetaterm data issue')
+        assert all(s and s.strip() for s in symbols), 'Empty symbols should be filtered'
+        ok('count', len(symbols))
+        ok('sample', symbols[:3])
 
     async with shield(f'get_dates({INDEX_SYMBOL})'):
         dates = await client.index.get_dates(INDEX_SYMBOL)

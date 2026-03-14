@@ -19,6 +19,23 @@ ParamsGenerator = Generator[Dict[str, Any], None, None]
 ParamsGeneratorCallback = Callable[[Dict[str, Any]], ParamsGenerator]
 
 
+def _filter_symbols(symbols: List[str]) -> List[str]:
+    """Filter out empty or blank symbols from a list.
+
+    ThetaData occasionally returns empty strings in symbol lists (a known
+    upstream data quality issue). These are removed here so callers always
+    receive well-formed data.
+    """
+    filtered = [s for s in symbols if s and s.strip()]
+    dropped = len(symbols) - len(filtered)
+    if dropped:
+        log.warning(
+            'Filtered %d empty/blank symbol(s) from ThetaData response '
+            '(known upstream data quality issue)', dropped,
+        )
+    return filtered
+
+
 class ThetaDataError(Exception):
     pass
 
@@ -326,7 +343,8 @@ class ThetaOptionClient(_ThetaClient):
 
         :returns: List of symbol strings (e.g. ``['SPXW', 'AMD', ...]``).
         """
-        return [r['symbol'] async for r in self.stream_data('option', 'list', 'symbols')]
+        symbols = [r['symbol'] async for r in self.stream_data('option', 'list', 'symbols')]
+        return _filter_symbols(symbols)
 
     async def get_expirations(self, symbol: str) -> AsyncGenerator[DateValue, None]:
         """Yield all available expiration dates for an option root.
@@ -940,7 +958,8 @@ class ThetaStockClient(_ThetaClient):
 
         :returns: List of symbol strings.
         """
-        return [r['symbol'] async for r in self.stream_data('stock', 'list', 'symbols')]
+        symbols = [r['symbol'] async for r in self.stream_data('stock', 'list', 'symbols')]
+        return _filter_symbols(symbols)
 
     # ── Single-item methods (Optional[T]; overloaded on time) ────────────────
 
@@ -1167,7 +1186,8 @@ class ThetaIndexClient(_ThetaClient):
 
         :returns: List of symbol strings (e.g. ``['SPX', 'NDX', ...]``).
         """
-        return [r['symbol'] async for r in self.stream_data('index', 'list', 'symbols')]
+        symbols = [r['symbol'] async for r in self.stream_data('index', 'list', 'symbols')]
+        return _filter_symbols(symbols)
 
     async def get_dates(self, symbol: str) -> List[str]:
         """Return all dates for which data is available for an index.
