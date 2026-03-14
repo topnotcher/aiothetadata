@@ -1,13 +1,12 @@
-"""
-Tests for ThetaStockClient.get_quote_snapshot().
-"""
+"""Tests for ThetaStockClient."""
 from decimal import Decimal
 
+import pytest
 from aiohttp import web
 
 from aiothetadata.client import ThetaStockClient
-from aiothetadata.types import Quote, Stock, FinancialEntityType
 from aiothetadata.constants import Exchange, QuoteCondition
+from aiothetadata.types import Quote, Stock, FinancialEntityType
 from aiothetadata import datetime as thetadt
 
 from .utils import csv_response, BaseThetaClientTest
@@ -26,7 +25,47 @@ SAMPLE_ROW = [
 ]
 
 
-class TestThetaStockClientGetQuoteSnapshot(BaseThetaClientTest):
+class TestThetaStockClientAtTime(BaseThetaClientTest):
+
+    async def get_client(self, url):
+        return ThetaStockClient(url)
+
+    async def test_get_symbols(self):
+        roots = ['MSFT', 'AAPL', 'ZBRA']
+
+        async def get_roots(request):
+            return csv_response(['symbol'], [[root] for root in roots])
+
+        handler = self.handler.register('/v3/stock/list/symbols', get_roots)
+        symbols = await self.client.get_symbols()
+        handler.assert_csv()
+        assert symbols == roots
+
+    async def test_get_quote_at_time_no_data_returns_none(self):
+        async def no_data(request):
+            return web.Response(status=472, text='No data found for your request')
+
+        self.handler.register('/v3/stock/at_time/quote', no_data)
+
+        result = await self.client.get_quote_at_time(
+            symbol='SPY', time='20250404 10:00:00',
+        )
+        assert result is None
+
+    async def test_get_trade_at_time_no_data_returns_none(self):
+        async def no_data(request):
+            return web.Response(status=472, text='No data found for your request')
+
+        self.handler.register('/v3/stock/at_time/trade', no_data)
+
+        result = await self.client.get_trade_at_time(
+            symbol='SPY', time='20250404 10:00:00',
+        )
+        assert result is None
+
+
+class TestThetaStockClientGetQuote(BaseThetaClientTest):
+    """Tests for ThetaStockClient.get_quote() — current/snapshot data."""
 
     async def get_client(self, url):
         return ThetaStockClient(url)
@@ -38,7 +77,7 @@ class TestThetaStockClientGetQuoteSnapshot(BaseThetaClientTest):
 
         self.handler.register('/v3/stock/snapshot/quote', handler)
 
-        result = await self.client.get_quote_snapshot('ZBRA')
+        result = await self.client.get_quote('ZBRA')
 
         assert result is not None
         assert isinstance(result, Quote)
@@ -52,7 +91,7 @@ class TestThetaStockClientGetQuoteSnapshot(BaseThetaClientTest):
 
         self.handler.register('/v3/stock/snapshot/quote', handler)
 
-        result = await self.client.get_quote_snapshot('ZBRA')
+        result = await self.client.get_quote('ZBRA')
 
         assert result is not None
         assert result.bid_size == 40
@@ -63,13 +102,13 @@ class TestThetaStockClientGetQuoteSnapshot(BaseThetaClientTest):
         assert result.ask_condition == QuoteCondition.REGULAR
 
     async def test_returns_quote_with_correct_timestamp(self):
-        """Should return a Quote with timestamp parsed as eastern time."""
+        """Timestamp should be parsed as US/Eastern market time."""
         async def handler(request):
             return csv_response(STOCK_QUOTE_SNAPSHOT_HEADER, [SAMPLE_ROW])
 
         self.handler.register('/v3/stock/snapshot/quote', handler)
 
-        result = await self.client.get_quote_snapshot('ZBRA')
+        result = await self.client.get_quote('ZBRA')
 
         assert result is not None
         assert result.time.tzinfo == thetadt.MarketTimeZone
@@ -84,7 +123,7 @@ class TestThetaStockClientGetQuoteSnapshot(BaseThetaClientTest):
 
         self.handler.register('/v3/stock/snapshot/quote', handler)
 
-        result = await self.client.get_quote_snapshot('ZBRA')
+        result = await self.client.get_quote('ZBRA')
 
         assert result is not None
         assert isinstance(result.entity, Stock)
@@ -98,7 +137,7 @@ class TestThetaStockClientGetQuoteSnapshot(BaseThetaClientTest):
 
         h = self.handler.register('/v3/stock/snapshot/quote', handler)
 
-        await self.client.get_quote_snapshot('ZBRA')
+        await self.client.get_quote('ZBRA')
 
         params = h.get_params()
         assert params['symbol'] == 'ZBRA'
@@ -112,7 +151,7 @@ class TestThetaStockClientGetQuoteSnapshot(BaseThetaClientTest):
 
         h = self.handler.register('/v3/stock/snapshot/quote', handler)
 
-        await self.client.get_quote_snapshot('ZBRA', venue='utp_cta')
+        await self.client.get_quote('ZBRA', venue='utp_cta')
 
         params = h.get_params()
         assert params['symbol'] == 'ZBRA'
@@ -126,8 +165,7 @@ class TestThetaStockClientGetQuoteSnapshot(BaseThetaClientTest):
 
         self.handler.register('/v3/stock/snapshot/quote', handler)
 
-        result = await self.client.get_quote_snapshot('ZBRA')
-
+        result = await self.client.get_quote('ZBRA')
         assert result is None
 
     async def test_returns_none_for_472_response(self):
@@ -137,6 +175,5 @@ class TestThetaStockClientGetQuoteSnapshot(BaseThetaClientTest):
 
         self.handler.register('/v3/stock/snapshot/quote', handler)
 
-        result = await self.client.get_quote_snapshot('ZBRA')
-
+        result = await self.client.get_quote('ZBRA')
         assert result is None

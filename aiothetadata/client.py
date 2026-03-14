@@ -561,14 +561,14 @@ class ThetaOptionClient(_ThetaClient):
             self._populate_entity_params(params, parsed)
             yield FirstOrderGreeks(**parsed)
 
-    async def get_quote_snapshot(
+    async def get_quote(
         self,
         symbol: str,
         expiration: DateValue,
         strike: PriceValue,
         right: OptionRight,
     ) -> Optional[Quote]:
-        """Get the current snapshot quote for a specific option contract.
+        """Get the current quote for a specific option contract.
 
         :param symbol: Option symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
@@ -585,12 +585,12 @@ class ThetaOptionClient(_ThetaClient):
         gen = self._gen_quotes(params, self.stream_data('option', 'snapshot', 'quote', **params))
         return await anext(gen, None)
 
-    def get_chain_quotes_snapshot(
+    def get_chain_quotes(
         self,
         symbol: str,
         expiration: DateValue,
     ) -> AsyncGenerator[Quote, None]:
-        """Get snapshot quotes for all contracts for a given expiration.
+        """Get current quotes for all contracts for a given expiration.
 
         :param symbol: Option symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
@@ -698,6 +698,11 @@ class ThetaStockClient(_ThetaClient):
 
         return self.stream_data('stock', 'at_time', request, params_gen=split_days, **params)
 
+    def _make_stock_quote(self, symbol: str, row: Dict[str, str]) -> Quote:
+        fields = parse_quote_fields(row)
+        fields.pop('symbol', None)  # symbol belongs on the entity, not Quote kwargs
+        return Quote(Stock.create(symbol=symbol), **fields)
+
     async def _get_quotes_at_time(
         self, symbol: str, start_date: str, end_date: str, time: str,
     ) -> AsyncGenerator[Quote, None]:
@@ -707,7 +712,7 @@ class ThetaStockClient(_ThetaClient):
         )
 
         async for row in gen:
-            yield Quote(Stock.create(symbol=symbol), **parse_quote_fields(row))
+            yield self._make_stock_quote(symbol, row)
 
     async def _get_trades_at_time(
         self, symbol: str, start_date: str, end_date: str, time: str,
@@ -778,12 +783,12 @@ class ThetaStockClient(_ThetaClient):
 
         return await anext(gen, None)
 
-    async def get_quote_snapshot(
+    async def get_quote(
         self,
         symbol: str,
         venue: Optional[str] = None,
     ) -> Optional[Quote]:
-        """Get the current snapshot quote for a stock.
+        """Get the current quote for a stock.
 
         :param symbol: Stock symbol (e.g. ``'ZBRA'``).
         :param venue: Optional venue override (e.g. ``'utp_cta'`` for 15-min
@@ -794,9 +799,7 @@ class ThetaStockClient(_ThetaClient):
         if venue is not None:
             params['venue'] = venue
         async for row in self.stream_data('stock', 'snapshot', 'quote', **params):
-            fields = parse_quote_fields(row)
-            fields.pop('symbol', None)  # symbol belongs on the entity, not Quote kwargs
-            return Quote(Stock.create(symbol=symbol), **fields)
+            return self._make_stock_quote(symbol, row)
         return None
 
     async def get_eod_report(self, symbol: str, date: DateValue) -> EodReport:
@@ -856,8 +859,8 @@ class ThetaIndexClient(_ThetaClient):
             if parsed['price'] != 0:
                 yield IndexPriceReport(entity=Index.create(symbol=symbol), **parsed)
 
-    async def get_price_snapshot(self, symbol: str) -> Optional[IndexPriceReport]:
-        """Get the current snapshot price for an index.
+    async def get_price(self, symbol: str) -> Optional[IndexPriceReport]:
+        """Get the current price for an index.
 
         :param symbol: Index symbol (e.g. ``'SPX'``).
         :returns: :class:`~.IndexPriceReport`, or ``None`` if no data.
