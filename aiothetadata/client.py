@@ -561,6 +561,47 @@ class ThetaOptionClient(_ThetaClient):
             self._populate_entity_params(params, parsed)
             yield FirstOrderGreeks(**parsed)
 
+    async def get_quote(
+        self,
+        symbol: str,
+        expiration: DateValue,
+        strike: PriceValue,
+        right: OptionRight,
+    ) -> Optional[Quote]:
+        """Get the current quote for a specific option contract.
+
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
+        :param expiration: Option expiration date.
+        :param strike: Strike price.
+        :param right: Option right.
+        :returns: :class:`~.Quote`, or ``None`` if no data.
+        """
+        params = {
+            'symbol': symbol,
+            'expiration': format_date(expiration),
+            'strike': format_price(strike),
+            'right': right,
+        }
+        gen = self._gen_quotes(params, self.stream_data('option', 'snapshot', 'quote', **params))
+        return await anext(gen, None)
+
+    def get_chain_quotes(
+        self,
+        symbol: str,
+        expiration: DateValue,
+    ) -> AsyncGenerator[Quote, None]:
+        """Get current quotes for all contracts for a given expiration.
+
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
+        :param expiration: Option expiration date.
+        :returns: Async generator of :class:`~.Quote` objects.
+        """
+        params = {
+            'symbol': symbol,
+            'expiration': format_date(expiration),
+        }
+        return self._gen_quotes(params, self.stream_data('option', 'snapshot', 'quote', **params))
+
     async def get_greeks_at_strike(
         self, symbol: str, expiration: DateValue, strike: PriceValue,
         right: OptionRight, order: GreeksOrder = GreeksOrder.FIRST,
@@ -657,6 +698,11 @@ class ThetaStockClient(_ThetaClient):
 
         return self.stream_data('stock', 'at_time', request, params_gen=split_days, **params)
 
+    def _make_quote(self, symbol: str, row: Dict[str, str]) -> Quote:
+        fields = parse_quote_fields(row)
+        fields.pop('symbol', None)  # symbol belongs on the entity, not Quote kwargs
+        return Quote(Stock.create(symbol=symbol), **fields)
+
     async def _get_quotes_at_time(
         self, symbol: str, start_date: str, end_date: str, time: str,
     ) -> AsyncGenerator[Quote, None]:
@@ -666,7 +712,7 @@ class ThetaStockClient(_ThetaClient):
         )
 
         async for row in gen:
-            yield Quote(Stock.create(symbol=symbol), **parse_quote_fields(row))
+            yield self._make_quote(symbol, row)
 
     async def _get_trades_at_time(
         self, symbol: str, start_date: str, end_date: str, time: str,
@@ -737,6 +783,25 @@ class ThetaStockClient(_ThetaClient):
 
         return await anext(gen, None)
 
+    async def get_quote(
+        self,
+        symbol: str,
+        venue: Optional[str] = None,
+    ) -> Optional[Quote]:
+        """Get the current quote for a stock.
+
+        :param symbol: Stock symbol (e.g. ``'ZBRA'``).
+        :param venue: Optional venue override (e.g. ``'utp_cta'`` for 15-min
+            delayed data on the Value subscription).
+        :returns: :class:`~.Quote`, or ``None`` if no data.
+        """
+        params = {'symbol': symbol}
+        if venue is not None:
+            params['venue'] = venue
+        async for row in self.stream_data('stock', 'snapshot', 'quote', **params):
+            return self._make_quote(symbol, row)
+        return None
+
     async def get_eod_report(self, symbol: str, date: DateValue) -> EodReport:
 
         report_date = format_date(date)
@@ -793,6 +858,16 @@ class ThetaIndexClient(_ThetaClient):
             parsed = parse_index_price_report(data)
             if parsed['price'] != 0:
                 yield IndexPriceReport(entity=Index.create(symbol=symbol), **parsed)
+
+    async def get_price(self, symbol: str) -> Optional[IndexPriceReport]:
+        """Get the current price for an index.
+
+        :param symbol: Index symbol (e.g. ``'SPX'``).
+        :returns: :class:`~.IndexPriceReport`, or ``None`` if no data.
+        """
+        params = {'symbol': symbol}
+        gen = self._gen_index_prices(symbol, self.stream_data('index', 'snapshot', 'price', **params))
+        return await anext(gen, None)
 
     async def get_historical_prices(
         self, symbol: str, start_date: DateValue, end_date: DateValue,
