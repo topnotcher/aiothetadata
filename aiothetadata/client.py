@@ -698,7 +698,7 @@ class ThetaStockClient(_ThetaClient):
 
         return self.stream_data('stock', 'at_time', request, params_gen=split_days, **params)
 
-    def _make_stock_quote(self, symbol: str, row: Dict[str, str]) -> Quote:
+    def _make_quote(self, symbol: str, row: Dict[str, str]) -> Quote:
         fields = parse_quote_fields(row)
         fields.pop('symbol', None)  # symbol belongs on the entity, not Quote kwargs
         return Quote(Stock.create(symbol=symbol), **fields)
@@ -712,7 +712,7 @@ class ThetaStockClient(_ThetaClient):
         )
 
         async for row in gen:
-            yield self._make_stock_quote(symbol, row)
+            yield self._make_quote(symbol, row)
 
     async def _get_trades_at_time(
         self, symbol: str, start_date: str, end_date: str, time: str,
@@ -799,7 +799,7 @@ class ThetaStockClient(_ThetaClient):
         if venue is not None:
             params['venue'] = venue
         async for row in self.stream_data('stock', 'snapshot', 'quote', **params):
-            return self._make_stock_quote(symbol, row)
+            return self._make_quote(symbol, row)
         return None
 
     async def get_eod_report(self, symbol: str, date: DateValue) -> EodReport:
