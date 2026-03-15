@@ -13,6 +13,9 @@ from ._utils import (
     HISTORICAL_DATE, HISTORICAL_TIME, HISTORICAL_DATETIME,
 )
 
+# Note: tests that call subscription-gated endpoints (stock trades) will be
+# automatically skipped by the PermissionDeniedError hook in conftest.py.
+
 
 # ── Discovery ─────────────────────────────────────────────────────────────────
 
@@ -43,20 +46,15 @@ async def test_get_ohlc(client):
 
 
 @pytest.mark.asyncio
-async def test_get_last_trade_subscription(client):
-    """get_last_trade() is skipped gracefully if subscription does not allow it."""
-    # Real-time trade snapshot requires Standard subscription.
-    # This test passes regardless of subscription level.
-    from aiothetadata.client import ThetaDataHttpError
-    try:
-        result = await client.stock.get_last_trade(STOCK_SYMBOL)
-        if result is not None:
-            assert isinstance(result, Trade)
-            assert result.price > 0
-    except ThetaDataHttpError as e:
-        if e.status == 403:
-            pytest.skip('Snapshot trade requires Standard subscription')
-        raise
+async def test_get_last_trade(client):
+    """get_last_trade() returns the current snapshot trade.
+
+    Requires Standard subscription — automatically skipped on Value.
+    """
+    result = await client.stock.get_last_trade(STOCK_SYMBOL)
+    assert result is not None
+    assert isinstance(result, Trade)
+    assert result.price > 0
 
 
 # ── Historical point-in-time ──────────────────────────────────────────────────
@@ -71,17 +69,14 @@ async def test_get_quote_at_time(client):
 
 @pytest.mark.asyncio
 async def test_get_last_trade_at_time(client):
-    """get_last_trade(time=T) returns the historical trade at the given time."""
-    from aiothetadata.client import ThetaDataHttpError
-    try:
-        result = await client.stock.get_last_trade(STOCK_SYMBOL, time=HISTORICAL_DATETIME)
-        assert result is not None
-        assert isinstance(result, Trade)
-        assert result.price > 0
-    except ThetaDataHttpError as e:
-        if e.status == 403:
-            pytest.skip('Historical trade requires Standard subscription')
-        raise
+    """get_last_trade(time=T) returns the historical trade at the given time.
+
+    Requires Standard subscription — automatically skipped on Value.
+    """
+    result = await client.stock.get_last_trade(STOCK_SYMBOL, time=HISTORICAL_DATETIME)
+    assert result is not None
+    assert isinstance(result, Trade)
+    assert result.price > 0
 
 
 # ── Historical series ─────────────────────────────────────────────────────────
@@ -99,19 +94,16 @@ async def test_get_quotes_series(client):
 
 @pytest.mark.asyncio
 async def test_get_trades_series(client):
-    """get_trades() returns one Trade per day across a date range."""
-    from aiothetadata.client import ThetaDataHttpError
-    try:
-        results = [t async for t in client.stock.get_trades(
-            STOCK_SYMBOL,
-            start_date=HISTORICAL_DATE, end_date=HISTORICAL_DATE, time=HISTORICAL_TIME,
-        )]
-        assert len(results) > 0
-        assert all(isinstance(t, Trade) for t in results)
-    except ThetaDataHttpError as e:
-        if e.status == 403:
-            pytest.skip('Historical trade series requires Standard subscription')
-        raise
+    """get_trades() returns one Trade per day across a date range.
+
+    Requires Standard subscription — automatically skipped on Value.
+    """
+    results = [t async for t in client.stock.get_trades(
+        STOCK_SYMBOL,
+        start_date=HISTORICAL_DATE, end_date=HISTORICAL_DATE, time=HISTORICAL_TIME,
+    )]
+    assert len(results) > 0
+    assert all(isinstance(t, Trade) for t in results)
 
 
 # ── Historical bars ───────────────────────────────────────────────────────────

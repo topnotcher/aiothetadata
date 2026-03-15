@@ -38,10 +38,17 @@ class ThetaDataError(Exception):
 
 
 class ThetaDataHttpError(ThetaDataError):
-    def __init__(self, status: 200, msg: str):
+    def __init__(self, status: int, msg: str):
         self.status = status
-
         super().__init__(f'ThetaData returned HTTP {status}: {msg}')
+
+
+class PermissionDeniedError(ThetaDataHttpError):
+    """Raised when ThetaData returns HTTP 403 or 471 (permission denied).
+
+    Typically indicates the current subscription does not include access
+    to the requested endpoint.
+    """
 
 
 class _PagedRequest:
@@ -222,8 +229,10 @@ class _ThetaClient:
 
     @staticmethod
     async def _handle_http_error(resp: aiohttp.ClientResponse) -> None:
-        # TODO: https://http-docs.thetadata.us/Articles/Data-And-Requests/Values/Error-Codes.html
-        raise ThetaDataHttpError(resp.status, await resp.text())
+        msg = await resp.text()
+        if resp.status in (403, 471):
+            raise PermissionDeniedError(resp.status, msg)
+        raise ThetaDataHttpError(resp.status, msg)
 
     @staticmethod
     def date_range_params(days: int) -> ParamsGeneratorCallback:

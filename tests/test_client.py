@@ -2,7 +2,7 @@
 import pytest
 from aiohttp import web
 
-from aiothetadata.client import ThetaOptionClient, ThetaDataHttpError
+from aiothetadata.client import ThetaOptionClient, ThetaDataHttpError, PermissionDeniedError
 from aiothetadata.constants import OptionRight
 from aiothetadata import datetime
 
@@ -89,3 +89,41 @@ class TestThetaClientHttpErrors(BaseThetaClientTest):
                 right=OptionRight.PUT, time='20250404 10:00:00',
             )
         assert exc_info.value.status == 500
+
+    async def test_403_raises_permission_denied(self):
+        """HTTP 403 should raise PermissionDeniedError (subclass of ThetaDataHttpError)."""
+        async def forbidden(request):
+            return web.Response(status=403, text='Subscription required')
+
+        self.handler.register('/v3/option/snapshot/quote', forbidden)
+
+        with pytest.raises(PermissionDeniedError) as exc_info:
+            await self.client.get_quote(
+                symbol='SPXW', expiration=20250407, strike=4985, right=OptionRight.PUT,
+            )
+        assert exc_info.value.status == 403
+
+    async def test_471_raises_permission_denied(self):
+        """HTTP 471 should also raise PermissionDeniedError."""
+        async def forbidden(request):
+            return web.Response(status=471, text='Permission denied')
+
+        self.handler.register('/v3/option/snapshot/quote', forbidden)
+
+        with pytest.raises(PermissionDeniedError) as exc_info:
+            await self.client.get_quote(
+                symbol='SPXW', expiration=20250407, strike=4985, right=OptionRight.PUT,
+            )
+        assert exc_info.value.status == 471
+
+    async def test_permission_denied_is_http_error(self):
+        """PermissionDeniedError should be catchable as ThetaDataHttpError."""
+        async def forbidden(request):
+            return web.Response(status=403, text='Subscription required')
+
+        self.handler.register('/v3/option/snapshot/quote', forbidden)
+
+        with pytest.raises(ThetaDataHttpError):
+            await self.client.get_quote(
+                symbol='SPXW', expiration=20250407, strike=4985, right=OptionRight.PUT,
+            )
