@@ -401,8 +401,9 @@ class ThetaOptionClient(_ThetaClient):
             current snapshot data.
         :return: Async generator of :class:`~.Quote` objects.
         """
-        if start_date is not None or end_date is not None or time is not None:
-            if not (start_date is not None and end_date is not None and time is not None):
+        time_params = (start_date, end_date, time)
+        if any(time_params):
+            if not all(time_params):
                 raise ValueError('start_date, end_date, and time must all be provided together')
             params, gen = self._at_time_params(
                 'quote',
@@ -457,8 +458,9 @@ class ThetaOptionClient(_ThetaClient):
             current snapshot data.
         :return: Async generator of :class:`~.Trade` objects.
         """
-        if start_date is not None or end_date is not None or time is not None:
-            if not (start_date is not None and end_date is not None and time is not None):
+        time_params = (start_date, end_date, time)
+        if any(time_params):
+            if not all(time_params):
                 raise ValueError('start_date, end_date, and time must all be provided together')
             params, gen = self._at_time_params(
                 'trade',
