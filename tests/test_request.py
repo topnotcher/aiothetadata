@@ -86,3 +86,45 @@ DATE_TIMES = [
 @pytest.mark.parametrize('value,date_value,time_value', DATE_TIMES)
 def test_format_date_time(value, date_value, time_value):
     assert format_date_time(value) == (format_date(date_value), format_time(time_value))
+
+
+def test_get_datetime_from_string():
+    """String in YYYYMMDD HH:MM:SS format should be parsed as eastern time."""
+    from aiothetadata.request import get_datetime
+    from aiothetadata.datetime import MarketTimeZone
+    result = get_datetime('20260312 10:00:00')
+    assert result.year == 2026
+    assert result.month == 3
+    assert result.day == 12
+    assert result.hour == 10
+    assert result.minute == 0
+    assert result.tzinfo == MarketTimeZone
+
+
+def test_get_datetime_from_naive_datetime():
+    """Naive datetime should be treated as eastern time."""
+    from aiothetadata.request import get_datetime
+    from aiothetadata.datetime import MarketTimeZone
+    dt = datetime.datetime(2026, 3, 12, 10, 0, 0)
+    result = get_datetime(dt)
+    assert result.hour == 10
+    assert result.tzinfo == MarketTimeZone
+
+
+def test_get_datetime_from_aware_datetime():
+    """Timezone-aware datetime should be converted to eastern time."""
+    from aiothetadata.request import get_datetime
+    from aiothetadata.datetime import MarketTimeZone
+    import zoneinfo
+    utc = zoneinfo.ZoneInfo('UTC')
+    dt = datetime.datetime(2026, 3, 12, 15, 0, 0, tzinfo=utc)  # 15:00 UTC = 11:00 ET
+    result = get_datetime(dt)
+    assert result.hour == 11
+    assert result.tzinfo == MarketTimeZone
+
+
+def test_get_datetime_invalid_raises():
+    """Non-datetime/string values should raise ValueError."""
+    from aiothetadata.request import get_datetime
+    with pytest.raises(ValueError):
+        get_datetime(20260312)

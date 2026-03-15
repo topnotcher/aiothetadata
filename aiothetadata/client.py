@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import decimal
 import logging
 
@@ -619,7 +620,7 @@ class ThetaOptionClient(_ThetaClient):
         *,
         time: Optional[DateTimeValue] = None,
         order: GreeksOrder = GreeksOrder.FIRST,
-        lookback: Optional[datetime.timedelta] = None,
+        lookback: datetime.timedelta = datetime.timedelta(minutes=5),
     ) -> Optional[FirstOrderGreeks]:
         """Get greeks for a specific option contract.
 
@@ -646,16 +647,7 @@ class ThetaOptionClient(_ThetaClient):
         :return: :class:`~.FirstOrderGreeks`, or ``None`` if no data.
         """
         if time is not None:
-            import datetime as _dt
-            if lookback is None:
-                lookback = _dt.timedelta(minutes=5)
-            if isinstance(time, str):
-                dt = _dt.datetime.fromisoformat(time)
-            else:
-                dt = time
-            if not hasattr(dt, 'tzinfo') or dt.tzinfo is None:
-                from .datetime import MarketTimeZone
-                dt = dt.replace(tzinfo=MarketTimeZone)
+            dt = get_datetime(time)
             start_dt = dt - lookback
             result = None
             async for g in self.get_historical_greeks(

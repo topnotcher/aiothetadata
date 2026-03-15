@@ -11,6 +11,7 @@ __all__ = (
     'format_date',
     'format_time',
     'format_date_time',
+    'get_datetime',
     'range_of_days',
 )
 
@@ -146,6 +147,32 @@ def format_date_time(value: DateTimeValue) -> Tuple[str, str]:
         raise ValueError(f'Invalid date time: {value}')
 
     return format_date(date), format_time(time)
+
+
+def get_datetime(value: DateTimeValue) -> datetime.datetime:
+    """Get a timezone-aware :class:`datetime.datetime` from a :data:`DateTimeValue`.
+
+    Accepts the same types as :func:`~.format_date_time`.  The returned
+    datetime is always in the market timezone (US/Eastern).
+
+    Naive datetimes and strings are assumed to be in eastern time.
+    Timezone-aware datetimes are converted to eastern time.
+
+    :param value: A :class:`datetime.datetime` or a string in
+        ``'YYYYMMDD HH:MM:SS'`` format (assumed to be eastern time).
+    :return: A timezone-aware :class:`datetime.datetime` in eastern time.
+    :raises ValueError: If ``value`` is not a recognised type.
+    """
+    if isinstance(value, str):
+        value = datetime.datetime.strptime(value, '%Y%m%d %H:%M:%S')
+
+    if not isinstance(value, datetime.datetime):
+        raise ValueError(f'Invalid date time: {value}')
+
+    if value.tzinfo is None:
+        return value.replace(tzinfo=MarketTimeZone)
+
+    return value.astimezone(MarketTimeZone)
 
 
 def range_of_days(start: str, end: str, split: int) -> Generator[Tuple[str, str], None, None]:
