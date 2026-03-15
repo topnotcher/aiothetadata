@@ -54,6 +54,3 @@ addopts = "-v"
 testpaths = [
 	"tests",
 ]
-norecursedirs = [
-	"tests/acceptance",
-]
