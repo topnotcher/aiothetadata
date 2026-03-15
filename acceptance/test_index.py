@@ -103,6 +103,22 @@ async def test_get_historical_prices(client):
 
 
 @pytest.mark.asyncio
+async def test_get_eod(client):
+    """get_eod() returns EodReport objects with correct OHLC and timestamps."""
+    from aiothetadata.types import EodReport
+    results = [r async for r in client.index.get_eod(
+        INDEX_SYMBOL,
+        start_date=HISTORICAL_DATE,
+        end_date=HISTORICAL_DATE,
+    )]
+    assert len(results) > 0
+    assert all(isinstance(r, EodReport) for r in results)
+    assert all(r.close > 0 for r in results)
+    # last_trade gives actual close time (not hardcoded 16:00)
+    assert all(r.last_trade is not None for r in results)
+
+
+@pytest.mark.asyncio
 async def test_get_historical_ohlc(client):
     """get_historical_ohlc() returns interval OHLC bars."""
     results = [r async for r in client.index.get_historical_ohlc(

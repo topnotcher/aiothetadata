@@ -764,3 +764,53 @@ class TestThetaOptionClientGetEod(BaseThetaClientTest):
             start_date=20260310, end_date=20260310,
         )]
         assert results == []
+
+
+# ── get_greeks (historical at-time via lookback) ──────────────────────────────
+
+class TestThetaOptionClientGetGreeksAtTime(BaseThetaClientTest):
+
+    async def get_client(self, url):
+        return ThetaOptionClient(url)
+
+    async def test_uses_history_endpoint_with_lookback(self):
+        """get_greeks(time=T) should hit history/greeks with a lookback window."""
+        data = [
+            'SPXW,2026-03-20,6600.000,PUT,2026-03-12T09:59:59.039,66.20,66.70,-0.3460,-6.2193,365.8068,-52.2618,50.8053,-34.8830,0.2824,0.0000,2026-03-12T09:59:59.000,6699.00',
+            'SPXW,2026-03-20,6600.000,PUT,2026-03-12T09:59:59.044,66.20,66.70,-0.3458,-6.2221,365.7572,-52.2411,50.7846,-34.8689,0.2826,0.0000,2026-03-12T10:00:00.000,6699.17',
+        ]
+
+        async def handler(request):
+            return csv_response(GREEKS_HEADER, data)
+
+        h = self.handler.register('/v3/option/history/greeks/first_order', handler)
+
+        import datetime
+        result = await self.client.get_greeks(
+            'SPXW', datetime.date(2026, 3, 20), Decimal('6600'), OptionRight.PUT,
+            time=datetime.datetime(2026, 3, 12, 10, 0, 0),
+        )
+
+        assert result is not None
+        assert isinstance(result, FirstOrderGreeks)
+        # Should return last record (nearest to requested time)
+        assert result.delta == Decimal('-0.3458')
+        params = h.get_params()
+        assert params['symbol'] == 'SPXW'
+        assert params['strike'] == '6600.000'
+        assert params['right'] == 'PUT'
+        assert params['interval'] == 'tick'
+
+    async def test_returns_none_when_no_data_in_window(self):
+        """get_greeks(time=T) returns None if no greeks records found in lookback."""
+        async def handler(request):
+            return web.Response(status=472, text='No data')
+
+        self.handler.register('/v3/option/history/greeks/first_order', handler)
+
+        import datetime
+        result = await self.client.get_greeks(
+            'SPXW', datetime.date(2026, 3, 20), Decimal('6600'), OptionRight.PUT,
+            time=datetime.datetime(2026, 3, 12, 10, 0, 0),
+        )
+        assert result is None

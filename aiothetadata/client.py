@@ -617,20 +617,58 @@ class ThetaOptionClient(_ThetaClient):
         strike: PriceValue,
         right: OptionRight,
         *,
+        time: Optional[DateTimeValue] = None,
         order: GreeksOrder = GreeksOrder.FIRST,
+        lookback: Optional[datetime.timedelta] = None,
     ) -> Optional[FirstOrderGreeks]:
-        """Get current greeks for a specific option contract.
+        """Get greeks for a specific option contract.
 
         Delegates to :meth:`get_chain_greeks` with ``strike`` and ``right``
-        fixed, returning the first result.
+        fixed, returning the first result when ``time`` is omitted.
+
+        When ``time`` is provided, returns historical greeks using a small
+        lookback window via :meth:`get_historical_greeks`, taking the last
+        record at or before the requested time. Unlike quotes and trades,
+        there is no point-in-time greeks endpoint — historical greeks are
+        tick-driven, so a lookback window is required. The default window
+        of 5 minutes is sufficient for liquid contracts; increase it for
+        illiquid contracts or off-hours times.
 
         :param symbol: Option symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
         :param strike: Strike price.
         :param right: Option right.
+        :param time: If provided, returns the last historical greeks record
+            at or before this time. If omitted, returns current snapshot greeks.
         :param order: The order of greeks to retrieve.
+        :param lookback: How far before ``time`` to search for a greeks record.
+            Only used when ``time`` is provided. Default: 5 minutes.
         :return: :class:`~.FirstOrderGreeks`, or ``None`` if no data.
         """
+        if time is not None:
+            import datetime as _dt
+            if lookback is None:
+                lookback = _dt.timedelta(minutes=5)
+            if isinstance(time, str):
+                dt = _dt.datetime.fromisoformat(time)
+            else:
+                dt = time
+            if not hasattr(dt, 'tzinfo') or dt.tzinfo is None:
+                from .datetime import MarketTimeZone
+                dt = dt.replace(tzinfo=MarketTimeZone)
+            start_dt = dt - lookback
+            result = None
+            async for g in self.get_historical_greeks(
+                symbol, expiration, Interval.TICK,
+                strike=strike, right=right,
+                date=dt.date(),
+                start_time=start_dt.time(),
+                end_time=dt.time(),
+                order=order,
+            ):
+                result = g  # ascending order — last record is nearest to dt
+            return result
+
         return await anext(
             self.get_chain_greeks(symbol, expiration, strike=strike, right=right, order=order),
             None,
@@ -1361,6 +1399,36 @@ class ThetaIndexClient(_ThetaClient):
             fields = parse_ohlc_report(row)
             fields.pop('symbol', None)
             yield OhlcReport(Index.create(symbol=symbol), **fields)
+
+
+    async def get_eod(
+        self,
+        symbol: str,
+        *,
+        start_date: DateValue,
+        end_date: DateValue,
+    ) -> AsyncGenerator[EodReport, None]:
+        """Get end-of-day reports for an index over a date range.
+
+        The ``last_trade`` field in each :class:`~.EodReport` gives the actual
+        close timestamp, correctly reflecting early-close days rather than
+        assuming a fixed 16:00 close time.
+
+        :param symbol: Index symbol (e.g. ``'SPX'``).
+        :param start_date: First date to include.
+        :param end_date: Last date to include.
+        :return: Async generator of :class:`~.EodReport` objects.
+        """
+        params = {
+            'symbol': symbol,
+            'start_date': format_date(start_date),
+            'end_date': format_date(end_date),
+        }
+        split_days = self.date_range_params(30)
+        async for row in self.stream_data('index', 'history', 'eod', params_gen=split_days, **params):
+            fields = parse_eod_report(row)
+            fields.pop('symbol', None)
+            yield EodReport(Index.create(symbol=symbol), **fields)
 
 
 class ThetaClient:
