@@ -354,3 +354,54 @@ class TestThetaIndexClientGetHistoricalOhlc(BaseThetaClientTest):
             'SPX', '15m', start_date=20260310, end_date=20260310,
         )]
         assert results == []
+
+
+# ── get_eod ───────────────────────────────────────────────────────────────────
+
+class TestThetaIndexClientGetEod(BaseThetaClientTest):
+
+    async def get_client(self, url):
+        return ThetaIndexClient(url)
+
+    async def test_yields_eod_reports(self):
+        """Should yield EodReport objects with correct fields."""
+        rows = [
+            ['2026-03-12T17:18:01.781', '2026-03-12T16:04:31.000',
+             '6740.88', '6740.88', '6670.40', '6672.62',
+             '0', '0', '0', '0', '0.00', '0', '0', '0', '0.00', '0'],
+        ]
+        header = ['created', 'last_trade', 'open', 'high', 'low', 'close',
+                  'volume', 'count', 'bid_size', 'bid_exchange', 'bid', 'bid_condition',
+                  'ask_size', 'ask_exchange', 'ask', 'ask_condition']
+
+        async def handler(request):
+            return csv_response(header, rows)
+
+        h = self.handler.register('/v3/index/history/eod', handler)
+        results = [r async for r in self.client.get_eod(
+            'SPX', start_date=20260312, end_date=20260312,
+        )]
+
+        assert len(results) == 1
+        r = results[0]
+        from aiothetadata.types import EodReport
+        assert isinstance(r, EodReport)
+        assert r.symbol == 'SPX'
+        from decimal import Decimal
+        assert r.close == Decimal('6672.62')
+        assert r.open == Decimal('6740.88')
+        params = h.get_params()
+        assert params['symbol'] == 'SPX'
+        assert params['start_date'] == '20260312'
+        assert params['end_date'] == '20260312'
+
+    async def test_472_yields_nothing(self):
+        """472 response should yield nothing."""
+        async def handler(request):
+            return web.Response(status=472, text='No data')
+
+        self.handler.register('/v3/index/history/eod', handler)
+        results = [r async for r in self.client.get_eod(
+            'SPX', start_date=20260312, end_date=20260312,
+        )]
+        assert results == []

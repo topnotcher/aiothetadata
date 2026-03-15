@@ -101,6 +101,19 @@ async def test_get_greeks(client):
 
 
 @pytest.mark.asyncio
+async def test_get_greeks_at_time(client):
+    """get_greeks(time=T) returns historical greeks via lookback window."""
+    result = await client.option.get_greeks(
+        OPTION_SYMBOL, OPTION_EXPIRATION, OPTION_STRIKE_PUT, OptionRight.PUT,
+        time=HISTORICAL_DATETIME,
+    )
+    assert result is not None
+    assert isinstance(result, FirstOrderGreeks)
+    assert result.delta < 0  # PUT delta is negative
+    assert result.underlying_price > 0
+
+
+@pytest.mark.asyncio
 async def test_get_chain_greeks(client):
     """get_chain_greeks() yields greeks for all contracts in an expiration."""
     count = 0
