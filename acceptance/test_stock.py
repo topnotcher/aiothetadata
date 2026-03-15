@@ -13,7 +13,7 @@ from ._utils import (
     HISTORICAL_DATE, HISTORICAL_TIME, HISTORICAL_DATETIME,
 )
 
-# Note: tests that call subscription-gated endpoints (stock trades) will be
+# Note: tests that call subscription-gated endpoints will be
 # automatically skipped by the PermissionDeniedError hook in conftest.py.
 
 
@@ -47,10 +47,7 @@ async def test_get_ohlc(client):
 
 @pytest.mark.asyncio
 async def test_get_last_trade(client):
-    """get_last_trade() returns the current snapshot trade.
-
-    Requires Standard subscription — automatically skipped on Value.
-    """
+    """get_last_trade() returns the current snapshot trade."""
     result = await client.stock.get_last_trade(STOCK_SYMBOL)
     assert result is not None
     assert isinstance(result, Trade)
@@ -69,10 +66,7 @@ async def test_get_quote_at_time(client):
 
 @pytest.mark.asyncio
 async def test_get_last_trade_at_time(client):
-    """get_last_trade(time=T) returns the historical trade at the given time.
-
-    Requires Standard subscription — automatically skipped on Value.
-    """
+    """get_last_trade(time=T) returns the historical trade at the given time."""
     result = await client.stock.get_last_trade(STOCK_SYMBOL, time=HISTORICAL_DATETIME)
     assert result is not None
     assert isinstance(result, Trade)
@@ -94,10 +88,7 @@ async def test_get_quotes_series(client):
 
 @pytest.mark.asyncio
 async def test_get_trades_series(client):
-    """get_trades() returns one Trade per day across a date range.
-
-    Requires Standard subscription — automatically skipped on Value.
-    """
+    """get_trades() returns one Trade per day across a date range."""
     results = [t async for t in client.stock.get_trades(
         STOCK_SYMBOL,
         start_date=HISTORICAL_DATE, end_date=HISTORICAL_DATE, time=HISTORICAL_TIME,
