@@ -1,4 +1,5 @@
 import asyncio
+import decimal
 import logging
 
 from typing import Optional, List, Coroutine, AsyncGenerator, Dict, Any, Tuple, Generator, Callable
@@ -22,17 +23,13 @@ ParamsGeneratorCallback = Callable[[Dict[str, Any]], ParamsGenerator]
 def _filter_symbols(symbols: List[str]) -> List[str]:
     """Filter out empty or blank symbols from a list.
 
-    ThetaData occasionally returns empty strings in symbol lists (a known
-    upstream data quality issue). These are removed here so callers always
-    receive well-formed data.
+    ThetaData occasionally returns empty strings in symbol lists.
+    These are removed here so callers always receive well-formed data.
     """
     filtered = [s for s in symbols if s and s.strip()]
     dropped = len(symbols) - len(filtered)
     if dropped:
-        log.warning(
-            'Filtered %d empty/blank symbol(s) from ThetaData response '
-            '(known upstream data quality issue)', dropped,
-        )
+        log.warning('Filtered %d empty/blank symbol(s) from ThetaData response', dropped)
     return filtered
 
 
@@ -322,26 +319,25 @@ class ThetaOptionClient(_ThetaClient):
             'end_date': end_date,
             'time_of_day': time,
         }
-        if strike and right:
+        if strike is not None and right is not None:
             params['strike'] = format_price(strike)
             params['right'] = right
             days = 30
+        elif strike is not None or right is not None:
+            raise ValueError('strike and right must both be provided or both omitted')
         else:
             days = 5
-        if limit:
+        if limit is not None:
             params['strike_range'] = limit
-        return params, self.stream_data(
-            'option', 'at_time', request,
-            params_gen=self.date_range_params(days),
-            **params,
-        )
+        split_days = self.date_range_params(days)
+        return params, self.stream_data('option', 'at_time', request,  params_gen=split_days, **params)
 
     # ── Discovery ─────────────────────────────────────────────────────────────
 
     async def get_symbols(self) -> List[str]:
         """Return all available option root symbols.
 
-        :returns: List of symbol strings (e.g. ``['SPXW', 'AMD', ...]``).
+        :return: List of symbol strings (e.g. ``['SPXW', 'AMD', ...]``).
         """
         symbols = [r['symbol'] async for r in self.stream_data('option', 'list', 'symbols')]
         return _filter_symbols(symbols)
@@ -349,17 +345,17 @@ class ThetaOptionClient(_ThetaClient):
     async def get_expirations(self, symbol: str) -> AsyncGenerator[DateValue, None]:
         """Yield all available expiration dates for an option root.
 
-        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
         :yields: :class:`datetime.date` objects in ascending order.
         """
         gen = self.stream_data('option', 'list', 'expirations', symbol=symbol)
         async for row in gen:
             yield parse_date(row['expiration'])
 
-    async def get_strikes(self, symbol: str, expiration: DateValue) -> AsyncGenerator[PriceValue, None]:
+    async def get_strikes(self, symbol: str, expiration: DateValue) -> AsyncGenerator[decimal.Decimal, None]:
         """Yield all available strikes for a given symbol and expiration.
 
-        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
         :yields: Strike prices as :class:`decimal.Decimal`.
         """
@@ -380,37 +376,41 @@ class ThetaOptionClient(_ThetaClient):
         *,
         strike: Optional[PriceValue] = None,
         right: Optional[OptionRight] = None,
-        strike_range: Optional[int] = None,
+        limit: Optional[int] = None,
         start_date: Optional[DateValue] = None,
         end_date: Optional[DateValue] = None,
         time: Optional[TimeValue] = None,
     ) -> AsyncGenerator[Quote, None]:
         """Get quotes for option contracts.
 
-        Returns the current snapshot quote for each matching contract when
-        called without date/time arguments. Returns historical point-in-time
-        quotes (one result per contract per trading day) when ``start_date``,
-        ``end_date``, and ``time`` are all provided.
+        Can be invoked in two ways:
 
-        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        - Without ``start_date``, ``end_date``, or ``time``: returns the
+          current snapshot quote for each matching contract.
+        - With ``start_date``, ``end_date``, and ``time``: returns historical
+          point-in-time quotes, one result per contract per trading day.
+
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
         :param strike: Filter to a specific strike. Optional.
         :param right: Filter to a specific right. Optional.
-        :param strike_range: Limit results to N strikes around ATM. Optional.
+        :param limit: Limit results to N strikes around ATM. Optional.
         :param start_date: Start of historical date range. Requires ``time``.
         :param end_date: End of historical date range. Requires ``time``.
         :param time: Time of day for historical lookup. If omitted, returns
             current snapshot data.
-        :returns: Async generator of :class:`~.Quote` objects.
+        :return: Async generator of :class:`~.Quote` objects.
         """
         if start_date is not None or end_date is not None or time is not None:
+            if not (start_date is not None and end_date is not None and time is not None):
+                raise ValueError('start_date, end_date, and time must all be provided together')
             params, gen = self._at_time_params(
                 'quote',
                 symbol=symbol, expiration=expiration,
                 start_date=format_date(start_date),
                 end_date=format_date(end_date),
                 time=format_time(time),
-                strike=strike, right=right, limit=strike_range,
+                strike=strike, right=right, limit=limit,
             )
         else:
             params: Dict[str, Any] = {
@@ -421,8 +421,8 @@ class ThetaOptionClient(_ThetaClient):
                 params['strike'] = format_price(strike)
             if right is not None:
                 params['right'] = right
-            if strike_range is not None:
-                params['strike_range'] = strike_range
+            if limit is not None:
+                params['strike_range'] = limit
             gen = self.stream_data('option', 'snapshot', 'quote', **params)
 
         return self._gen_quotes(params, gen)
@@ -440,12 +440,14 @@ class ThetaOptionClient(_ThetaClient):
     ) -> AsyncGenerator[Trade, None]:
         """Get trades for option contracts.
 
-        Returns the current snapshot last trade for each matching contract when
-        called without date/time arguments. Returns historical point-in-time
-        trades (one result per contract per trading day) when ``start_date``,
-        ``end_date``, and ``time`` are all provided.
+        Can be invoked in two ways:
 
-        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        - Without ``start_date``, ``end_date``, or ``time``: returns the
+          current snapshot last trade for each matching contract.
+        - With ``start_date``, ``end_date``, and ``time``: returns historical
+          point-in-time trades, one result per contract per trading day.
+
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
         :param strike: Filter to a specific strike. Optional.
         :param right: Filter to a specific right. Optional.
@@ -453,9 +455,11 @@ class ThetaOptionClient(_ThetaClient):
         :param end_date: End of historical date range. Requires ``time``.
         :param time: Time of day for historical lookup. If omitted, returns
             current snapshot data.
-        :returns: Async generator of :class:`~.Trade` objects.
+        :return: Async generator of :class:`~.Trade` objects.
         """
         if start_date is not None or end_date is not None or time is not None:
+            if not (start_date is not None and end_date is not None and time is not None):
+                raise ValueError('start_date, end_date, and time must all be provided together')
             params, gen = self._at_time_params(
                 'trade',
                 symbol=symbol, expiration=expiration,
@@ -493,13 +497,13 @@ class ThetaOptionClient(_ThetaClient):
             Only :attr:`~.GreeksOrder.FIRST` is available on standard
             subscriptions. Higher orders require a professional subscription.
 
-        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
         :param strike: Filter to a specific strike. Optional.
         :param right: Filter to a specific right. Optional.
         :param limit: Limit results to N strikes around ATM. Optional.
         :param order: The order of greeks to retrieve.
-        :returns: Async generator of :class:`~.FirstOrderGreeks` objects.
+        :return: Async generator of :class:`~.FirstOrderGreeks` objects.
         """
         params: Dict[str, Any] = {
             'symbol': symbol,
@@ -539,13 +543,13 @@ class ThetaOptionClient(_ThetaClient):
         fixed, returning the first result. See that method for full parameter
         and overload documentation.
 
-        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
         :param strike: Strike price.
         :param right: Option right.
         :param time: If provided, returns the historical quote at this time.
             If omitted, returns the current snapshot quote.
-        :returns: :class:`~.Quote`, or ``None`` if no data.
+        :return: :class:`~.Quote`, or ``None`` if no data.
         """
         if time is not None:
             date_str, time_str = format_date_time(time)
@@ -574,13 +578,13 @@ class ThetaOptionClient(_ThetaClient):
         Delegates to :meth:`get_chain_trades` with ``strike`` and ``right``
         fixed, returning the first result.
 
-        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
         :param strike: Strike price.
         :param right: Option right.
         :param time: If provided, returns the historical last trade at this
             time. If omitted, returns the current snapshot last trade.
-        :returns: :class:`~.Trade`, or ``None`` if no data.
+        :return: :class:`~.Trade`, or ``None`` if no data.
         """
         if time is not None:
             date_str, time_str = format_date_time(time)
@@ -609,12 +613,12 @@ class ThetaOptionClient(_ThetaClient):
         Delegates to :meth:`get_chain_greeks` with ``strike`` and ``right``
         fixed, returning the first result.
 
-        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
         :param strike: Strike price.
         :param right: Option right.
         :param order: The order of greeks to retrieve.
-        :returns: :class:`~.FirstOrderGreeks`, or ``None`` if no data.
+        :return: :class:`~.FirstOrderGreeks`, or ``None`` if no data.
         """
         return await anext(
             self.get_chain_greeks(symbol, expiration, strike=strike, right=right, order=order),
@@ -630,11 +634,11 @@ class ThetaOptionClient(_ThetaClient):
     ) -> Optional[OhlcReport]:
         """Get the current day OHLC report for a specific option contract.
 
-        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
         :param strike: Strike price.
         :param right: Option right.
-        :returns: :class:`~.OhlcReport`, or ``None`` if no data.
+        :return: :class:`~.OhlcReport`, or ``None`` if no data.
         """
         params: Dict[str, Any] = {
             'symbol': symbol,
@@ -663,14 +667,14 @@ class ThetaOptionClient(_ThetaClient):
         Returns one :class:`~.Quote` per trading day — the quote nearest to
         but not after ``time`` on each day.
 
-        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
         :param strike: Strike price.
         :param right: Option right.
         :param start_date: First date in the range.
         :param end_date: Last date in the range.
         :param time: Time of day to sample on each date.
-        :returns: Async generator of :class:`~.Quote` objects.
+        :return: Async generator of :class:`~.Quote` objects.
         """
         return self.get_chain_quotes(
             symbol, expiration,
@@ -694,14 +698,14 @@ class ThetaOptionClient(_ThetaClient):
         Returns one :class:`~.Trade` per trading day — the trade nearest to
         but not after ``time`` on each day.
 
-        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
         :param strike: Strike price.
         :param right: Option right.
         :param start_date: First date in the range.
         :param end_date: Last date in the range.
         :param time: Time of day to sample on each date.
-        :returns: Async generator of :class:`~.Trade` objects.
+        :return: Async generator of :class:`~.Trade` objects.
         """
         return self.get_chain_trades(
             symbol, expiration,
@@ -729,17 +733,16 @@ class ThetaOptionClient(_ThetaClient):
         Returns quotes aggregated at ``interval`` frequency over the specified
         date and time range. Use :attr:`~.Interval.TICK` for tick-level data.
 
-        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
         :param strike: Strike price.
         :param right: Option right.
-        :param interval: Sampling interval — a string (``'1m'``, ``'15m'``),
-            an :class:`~.Interval` member, or milliseconds as ``int``.
+        :param interval: Sampling interval accepted by :meth:`~.Interval.parse`.
         :param start_date: First date to include.
         :param end_date: Last date to include.
         :param start_time: Earliest time of day to include. Optional.
         :param end_time: Latest time of day to include. Optional.
-        :returns: Async generator of :class:`~.Quote` objects.
+        :return: Async generator of :class:`~.Quote` objects.
         """
         interval_obj = Interval.parse(interval)
         params: Dict[str, Any] = {
@@ -768,7 +771,7 @@ class ThetaOptionClient(_ThetaClient):
         expiration: DateValue,
         strike: PriceValue,
         right: OptionRight,
-        interval: str | Interval,
+        interval: int | str | Interval,
         *,
         start_date: DateValue,
         end_date: DateValue,
@@ -777,18 +780,18 @@ class ThetaOptionClient(_ThetaClient):
     ) -> AsyncGenerator[OhlcReport, None]:
         """Get historical OHLC bars for a specific option contract.
 
-        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
         :param strike: Strike price.
         :param right: Option right.
-        :param interval: Bar interval as a string (e.g. ``'1m'``, ``'1h'``).
-            Millisecond integers are not supported by this endpoint.
+        :param interval: Sampling interval accepted by :meth:`~.Interval.parse`.
         :param start_date: First date to include.
         :param end_date: Last date to include.
         :param start_time: Earliest time of day to include. Optional.
         :param end_time: Latest time of day to include. Optional.
-        :returns: Async generator of :class:`~.OhlcReport` objects.
+        :return: Async generator of :class:`~.OhlcReport` objects.
         """
+        interval_obj = Interval.parse(interval)
         params: Dict[str, Any] = {
             'symbol': symbol,
             'expiration': format_date(expiration),
@@ -796,7 +799,7 @@ class ThetaOptionClient(_ThetaClient):
             'right': right,
             'start_date': format_date(start_date),
             'end_date': format_date(end_date),
-            'interval': interval,
+            'interval': interval_obj,
         }
         if start_time is not None:
             params['start_time'] = format_time(start_time)
@@ -829,10 +832,9 @@ class ThetaOptionClient(_ThetaClient):
         ``end_date`` for a range. ``strike`` and ``right`` are optional;
         omitting them returns greeks for all contracts.
 
-        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
-        :param interval: Sampling interval — a string (``'1m'``, ``'15m'``),
-            an :class:`~.Interval` member, or milliseconds as ``int``.
+        :param interval: Sampling interval accepted by :meth:`~.Interval.parse`.
         :param strike: Strike price. Optional.
         :param right: Option right. Optional.
         :param start_date: First date. Mutually exclusive with ``date``.
@@ -842,7 +844,7 @@ class ThetaOptionClient(_ThetaClient):
         :param end_time: Latest time of day to include. Optional.
         :param order: Greeks order (first, second, third). Standard subscriptions
             support first order only.
-        :returns: Async generator of :class:`~.FirstOrderGreeks` objects.
+        :return: Async generator of :class:`~.FirstOrderGreeks` objects.
         """
         interval_obj = Interval.parse(interval)
         params: Dict[str, Any] = {
@@ -894,13 +896,13 @@ class ThetaOptionClient(_ThetaClient):
         specific contract. Otherwise returns EOD data for all contracts in
         the expiration.
 
-        :param symbol: Option root symbol (e.g. ``'SPXW'``).
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
         :param expiration: Option expiration date.
         :param strike: Strike price. Optional — omit for entire chain.
         :param right: Option right. Optional — omit for entire chain.
         :param start_date: First date to include.
         :param end_date: Last date to include.
-        :returns: Async generator of :class:`~.EodReport` objects.
+        :return: Async generator of :class:`~.EodReport` objects.
         """
         params: Dict[str, Any] = {
             'symbol': symbol,
@@ -956,7 +958,7 @@ class ThetaStockClient(_ThetaClient):
     async def get_symbols(self) -> List[str]:
         """Return all available stock symbols.
 
-        :returns: List of symbol strings.
+        :return: List of symbol strings.
         """
         symbols = [r['symbol'] async for r in self.stream_data('stock', 'list', 'symbols')]
         return _filter_symbols(symbols)
@@ -980,7 +982,7 @@ class ThetaStockClient(_ThetaClient):
             delayed data on the Value subscription). Only used for current quotes.
         :param time: If provided, returns the historical quote at this time.
             If omitted, returns the current snapshot quote.
-        :returns: :class:`~.Quote`, or ``None`` if no data.
+        :return: :class:`~.Quote`, or ``None`` if no data.
         """
         if time is not None:
             date_str, time_str = format_date_time(time)
@@ -1010,7 +1012,7 @@ class ThetaStockClient(_ThetaClient):
         :param symbol: Stock symbol (e.g. ``'ZBRA'``).
         :param time: If provided, returns the historical trade at this time.
             If omitted, returns the current snapshot trade.
-        :returns: :class:`~.Trade`, or ``None`` if no data.
+        :return: :class:`~.Trade`, or ``None`` if no data.
         """
         if time is not None:
             date_str, time_str = format_date_time(time)
@@ -1033,7 +1035,7 @@ class ThetaStockClient(_ThetaClient):
         :param symbol: Stock symbol (e.g. ``'ZBRA'``).
         :param venue: Optional venue override (e.g. ``'utp_cta'`` for 15-min
             delayed data on the Value subscription).
-        :returns: :class:`~.OhlcReport`, or ``None`` if no data.
+        :return: :class:`~.OhlcReport`, or ``None`` if no data.
         """
         params: Dict[str, Any] = {'symbol': symbol}
         if venue is not None:
@@ -1061,7 +1063,7 @@ class ThetaStockClient(_ThetaClient):
         :param start_date: First date in the range.
         :param end_date: Last date in the range.
         :param time: Time of day to sample on each date.
-        :returns: Async generator of :class:`~.Quote` objects.
+        :return: Async generator of :class:`~.Quote` objects.
         """
         gen = self._at_time_stream(
             'quote', symbol,
@@ -1087,7 +1089,7 @@ class ThetaStockClient(_ThetaClient):
         :param start_date: First date in the range.
         :param end_date: Last date in the range.
         :param time: Time of day to sample on each date.
-        :returns: Async generator of :class:`~.Trade` objects.
+        :return: Async generator of :class:`~.Trade` objects.
         """
         gen = self._at_time_stream(
             'trade', symbol,
@@ -1101,7 +1103,7 @@ class ThetaStockClient(_ThetaClient):
     async def get_historical_ohlc(
         self,
         symbol: str,
-        interval: str | Interval,
+        interval: int | str | Interval,
         *,
         start_date: DateValue,
         end_date: DateValue,
@@ -1112,20 +1114,20 @@ class ThetaStockClient(_ThetaClient):
         """Get historical OHLC bars for a stock.
 
         :param symbol: Stock symbol (e.g. ``'ZBRA'``).
-        :param interval: Bar interval as a string (e.g. ``'1m'``, ``'1h'``).
-            Millisecond integers are not supported by this endpoint.
+        :param interval: Sampling interval accepted by :meth:`~.Interval.parse`.
         :param start_date: First date to include.
         :param end_date: Last date to include.
         :param start_time: Earliest time of day to include. Optional.
         :param end_time: Latest time of day to include. Optional.
         :param venue: Optional venue override. Optional.
-        :returns: Async generator of :class:`~.OhlcReport` objects.
+        :return: Async generator of :class:`~.OhlcReport` objects.
         """
+        interval_obj = Interval.parse(interval)
         params: Dict[str, Any] = {
             'symbol': symbol,
             'start_date': format_date(start_date),
             'end_date': format_date(end_date),
-            'interval': interval,
+            'interval': interval_obj,
         }
         if start_time is not None:
             params['start_time'] = format_time(start_time)
@@ -1152,7 +1154,7 @@ class ThetaStockClient(_ThetaClient):
         :param symbol: Stock symbol (e.g. ``'ZBRA'``).
         :param start_date: First date to include.
         :param end_date: Last date to include.
-        :returns: Async generator of :class:`~.EodReport` objects.
+        :return: Async generator of :class:`~.EodReport` objects.
         """
         params: Dict[str, Any] = {
             'symbol': symbol,
@@ -1184,7 +1186,7 @@ class ThetaIndexClient(_ThetaClient):
     async def get_symbols(self) -> List[str]:
         """Return all available index symbols.
 
-        :returns: List of symbol strings (e.g. ``['SPX', 'NDX', ...]``).
+        :return: List of symbol strings (e.g. ``['SPX', 'NDX', ...]``).
         """
         symbols = [r['symbol'] async for r in self.stream_data('index', 'list', 'symbols')]
         return _filter_symbols(symbols)
@@ -1193,7 +1195,7 @@ class ThetaIndexClient(_ThetaClient):
         """Return all dates for which data is available for an index.
 
         :param symbol: Index symbol (e.g. ``'SPX'``).
-        :returns: List of date strings.
+        :return: List of date strings.
         """
         return [r['date'] async for r in self.stream_data('index', 'list', 'dates', symbol=symbol)]
 
@@ -1213,7 +1215,7 @@ class ThetaIndexClient(_ThetaClient):
         :param symbol: Index symbol (e.g. ``'SPX'``).
         :param time: If provided, returns the historical price at this time.
             If omitted, returns the current snapshot price.
-        :returns: :class:`~.IndexPriceReport`, or ``None`` if no data.
+        :return: :class:`~.IndexPriceReport`, or ``None`` if no data.
         """
         if time is not None:
             date_str, time_str = format_date_time(time)
@@ -1238,7 +1240,7 @@ class ThetaIndexClient(_ThetaClient):
         """Get the current day OHLC report for an index.
 
         :param symbol: Index symbol (e.g. ``'SPX'``).
-        :returns: :class:`~.OhlcReport`, or ``None`` if no data.
+        :return: :class:`~.OhlcReport`, or ``None`` if no data.
         """
         async for row in self.stream_data('index', 'snapshot', 'ohlc', symbol=symbol):
             fields = parse_ohlc_report(row)
@@ -1266,7 +1268,7 @@ class ThetaIndexClient(_ThetaClient):
         :param end_date: Last date in the range.
         :param time: Time of day to sample on each date (e.g. ``'16:00:00'``
             for daily close).
-        :returns: Async generator of :class:`~.IndexPriceReport` objects.
+        :return: Async generator of :class:`~.IndexPriceReport` objects.
         """
         params = {
             'symbol': symbol,
@@ -1299,11 +1301,10 @@ class ThetaIndexClient(_ThetaClient):
         automatically.
 
         :param symbol: Index symbol (e.g. ``'SPX'``).
-        :param interval: Sampling interval — a string (``'1m'``, ``'15m'``),
-            an :class:`~.Interval` member, or milliseconds as ``int``.
+        :param interval: Sampling interval accepted by :meth:`~.Interval.parse`.
         :param start_date: First date to include.
         :param end_date: Last date to include.
-        :returns: Async generator of :class:`~.IndexPriceReport` objects.
+        :return: Async generator of :class:`~.IndexPriceReport` objects.
         """
         interval_obj = Interval.parse(interval)
         params = {
@@ -1322,7 +1323,7 @@ class ThetaIndexClient(_ThetaClient):
     async def get_historical_ohlc(
         self,
         symbol: str,
-        interval: str | Interval,
+        interval: int | str | Interval,
         *,
         start_date: DateValue,
         end_date: DateValue,
@@ -1332,17 +1333,17 @@ class ThetaIndexClient(_ThetaClient):
         For price-only data use :meth:`get_historical_prices`.
 
         :param symbol: Index symbol (e.g. ``'SPX'``).
-        :param interval: Bar interval as a string (e.g. ``'1m'``, ``'1h'``).
-            Millisecond integers are not supported by this endpoint.
+        :param interval: Sampling interval accepted by :meth:`~.Interval.parse`.
         :param start_date: First date to include.
         :param end_date: Last date to include.
-        :returns: Async generator of :class:`~.OhlcReport` objects.
+        :return: Async generator of :class:`~.OhlcReport` objects.
         """
+        interval_obj = Interval.parse(interval)
         params = {
             'symbol': symbol,
             'start_date': format_date(start_date),
             'end_date': format_date(end_date),
-            'interval': interval,
+            'interval': interval_obj,
         }
         split_days = self.date_range_params(7)
         async for row in self.stream_data('index', 'history', 'ohlc', params_gen=split_days, **params):
