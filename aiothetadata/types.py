@@ -14,6 +14,7 @@ __all__ = (
     'DateTimeValue',
     'Quote',
     'Trade',
+    'OhlcReport',
     'EodReport',
     'IndexPriceReport',
     'FirstOrderGreeks',
@@ -121,15 +122,33 @@ class Quote(BaseFinancialInfo):
 class Trade(BaseFinancialInfo):
     time: datetime.datetime
 
-    exchange: Exchange
     conditions: Tuple[QuoteCondition]
     price: decimal.Decimal
     sequence: int
     size: int
+    exchange: Exchange | None = None
 
     @property
     def condition(self) -> QuoteCondition:
         return self.conditions[0]
+
+
+@dataclass(slots=True, frozen=True)
+class OhlcReport(BaseFinancialInfo):
+    """Open/high/low/close report for a financial entity over a time period."""
+
+    #: Timestamp of the bar (start of interval for historical; report time for current).
+    time: datetime.datetime
+
+    open: decimal.Decimal
+    high: decimal.Decimal
+    low: decimal.Decimal
+    close: decimal.Decimal
+    volume: int
+    count: int
+
+    #: Volume-weighted average price. May be zero for index OHLC.
+    vwap: decimal.Decimal | None = None
 
 
 @dataclass(slots=True, frozen=True)

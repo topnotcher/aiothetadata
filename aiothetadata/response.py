@@ -16,6 +16,7 @@ __all__ = (
     'parse_trade_fields',
     'parse_strike',
     'parse_eod_report',
+    'parse_ohlc_report',
     'parse_index_price_report',
     'parse_first_order_greeks',
 )
@@ -151,8 +152,8 @@ def parse_trade_fields(data: Dict[str, str]) -> Dict[str, Any]:
 
     parsed['time'] = parse_timestamp(data['timestamp'])
 
-    for field in ('exchange', ):
-        parsed[field] = Exchange(int(data[field]))
+    if 'exchange' in data:
+        parsed['exchange'] = Exchange(int(data['exchange']))
 
     if 'strike' in data:
         parsed['strike'] = parse_strike(data['strike'])
@@ -192,6 +193,47 @@ def parse_eod_report(data: Dict[str, str]) -> Dict[str, Any]:
     # v3 has last_trade as ISO timestamp
     if 'last_trade' in data:
         parsed['last_trade'] = parse_timestamp(data['last_trade'])
+
+    return parsed
+
+
+def parse_ohlc_report(data: Dict[str, str]) -> Dict[str, Any]:
+    """Parse OHLC report fields from snapshot or history responses.
+
+    Handles both option/stock/index OHLC responses. The ``vwap`` field is
+    optional — present in stock and option history but absent in index OHLC.
+
+    :param data: Raw response row as a string-to-string mapping.
+    :returns: Parsed field dict suitable for constructing an
+        :class:`~aiothetadata.types.OhlcReport`.
+    """
+    parsed: Dict[str, Any] = {}
+
+    if 'timestamp' in data:
+        parsed['time'] = parse_timestamp(data['timestamp'])
+    elif 'created' in data:
+        parsed['time'] = parse_timestamp(data['created'])
+
+    for field in ('open', 'high', 'low', 'close'):
+        parsed[field] = decimal.Decimal(data[field])
+
+    parsed['volume'] = int(data['volume'])
+    parsed['count'] = int(data['count'])
+
+    if 'vwap' in data:
+        parsed['vwap'] = decimal.Decimal(data['vwap'])
+
+    if 'strike' in data:
+        parsed['strike'] = parse_strike(data['strike'])
+
+    if 'right' in data:
+        parsed['right'] = OptionRight(data['right'])
+
+    if 'symbol' in data:
+        parsed['symbol'] = data['symbol']
+
+    if 'expiration' in data:
+        parsed['expiration'] = parse_date(data['expiration'])
 
     return parsed
 

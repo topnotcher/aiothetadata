@@ -57,7 +57,7 @@ class TestThetaClientPagination(BaseThetaClientTest):
 
         self.handler.register('/v3/option/at_time/quote', get_quotes)
 
-        async for _ in self.client.get_quotes_at_time(
+        async for _ in self.client.get_quotes(
             symbol='SPXW', expiration=20240315, strike=6000,
             right=OptionRight.PUT, start_date=20240101, end_date=20240331,
             time='10:00:00',
@@ -84,7 +84,7 @@ class TestThetaClientHttpErrors(BaseThetaClientTest):
         self.handler.register('/v3/option/at_time/quote', server_error)
 
         with pytest.raises(ThetaDataHttpError) as exc_info:
-            await self.client.get_quote_at_time(
+            await self.client.get_quote(
                 symbol='SPXW', expiration=20250407, strike=4985,
                 right=OptionRight.PUT, time='20250404 10:00:00',
             )
