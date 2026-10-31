@@ -19,6 +19,7 @@ __all__ = (
     'IndexPriceReport',
     'FirstOrderGreeks',
     'OpenInterest',
+    'EodGreeks',
 
     'FinancialEntityType',
     'FinancialEntity',
@@ -224,3 +225,39 @@ class OpenInterest(BaseFinancialInfo):
     time: datetime.datetime
     #: Number of outstanding contracts.
     open_interest: int
+
+
+@dataclass(slots=True, frozen=True)
+class EodGreeks(BaseFinancialInfo):
+    """End-of-day greeks for an option contract.
+
+    ThetaData computes these once per day after the close from the closing
+    quote and underlying price. Unlike the first-order snapshot and history
+    endpoints, the EOD greeks endpoint includes second-order greeks such as
+    ``gamma`` on a standard subscription.
+    """
+
+    #: Timestamp of the EOD record as reported by ThetaData.
+    time: datetime.datetime
+    #: Underlying price used for the calculation.
+    underlying_price: decimal.Decimal
+    #: Implied volatility.
+    iv: decimal.Decimal
+    #: Model error on the implied volatility calculation.
+    iv_error: decimal.Decimal
+    #: Closing bid price of the option.
+    bid: decimal.Decimal
+    #: Closing ask price of the option.
+    ask: decimal.Decimal
+    #: Last trade price of the day (zero if no trades).
+    close: decimal.Decimal
+    #: Contracts traded during the day.
+    volume: int
+    delta: decimal.Decimal
+    gamma: decimal.Decimal
+    theta: decimal.Decimal
+    vega: decimal.Decimal
+    rho: decimal.Decimal
+    vanna: decimal.Decimal
+    charm: decimal.Decimal
+    vomma: decimal.Decimal

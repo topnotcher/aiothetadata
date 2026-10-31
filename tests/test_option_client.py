@@ -8,7 +8,7 @@ from aiohttp import web
 from aiothetadata.client import ThetaOptionClient
 from aiothetadata.constants import OptionRight, QuoteCondition, Exchange, GreeksOrder
 from aiothetadata.types import (
-    Quote, Trade, OhlcReport, EodReport, FirstOrderGreeks, OpenInterest, Option, FinancialEntityType,
+    Quote, Trade, OhlcReport, EodReport, FirstOrderGreeks, OpenInterest, EodGreeks, Option, FinancialEntityType,
 )
 from aiothetadata import datetime as thetadt
 
@@ -969,3 +969,69 @@ class TestThetaOptionClientGetOpenInterest(BaseThetaClientTest):
         self.handler.register('/v3/option/snapshot/open_interest', handler)
         result = await self.client.get_open_interest('SPXW', 20261102, Decimal('7480'), OptionRight.PUT)
         assert result is None
+
+
+# ── get_eod_greeks ────────────────────────────────────────────────────────────
+
+EOD_GREEKS_HEADER = ['symbol', 'expiration', 'strike', 'right', 'timestamp', 'open', 'high', 'low', 'close', 'volume', 'count', 'bid_size', 'bid_exchange', 'bid', 'bid_condition', 'ask_size', 'ask_exchange', 'ask', 'ask_condition', 'delta', 'theta', 'vega', 'rho', 'epsilon', 'lambda', 'gamma', 'vanna', 'charm', 'vomma', 'veta', 'vera', 'speed', 'zomma', 'color', 'ultima', 'd1', 'd2', 'dual_delta', 'dual_gamma', 'implied_vol', 'iv_error', 'underlying_timestamp', 'underlying_price']
+
+EOD_GREEKS_PUT_ROW = 'SPXW,2024-03-15,5100.000,PUT,2024-03-13T16:26:54.013,3.82,5.50,2.45,3.10,6538,1219,44,5,2.80,50,9,5,3.10,50,-0.1102,-2.5128,72.0324,-3.1377,3.1215,-193.0735,0.0034,-1.5868,19.9375,743.2371,15911.2322,-45.3071,0.0000,0.0115,0.1312,-7797.9926,1.2249,1.2143,0.1122,0.0035,0.1441,0.0002,2024-03-13T16:02:13.000,5165.3100'
+EOD_GREEKS_CALL_ROW = 'SPXW,2024-04-19,4700.000,CALL,2024-03-13T15:14:33.421,499.63,499.63,499.63,499.63,3,2,250,5,489.10,50,168,5,508.70,50,0.9427,-1.1531,188.8199,443.0570,-493.6304,9.7606,0.0003,-0.8573,0.7627,2225.3039,2911.2608,-468.0484,0.0000,0.0023,0.0019,-6724.7967,1.5782,1.5137,-0.9299,0.0004,0.2027,0.0000,2024-03-13T16:02:13.000,5165.3100'
+
+
+class TestThetaOptionClientGetEodGreeks(BaseThetaClientTest):
+
+    async def get_client(self, url):
+        return ThetaOptionClient(url)
+
+    async def test_yields_eod_greeks_with_gamma(self):
+        async def handler(request):
+            return csv_response(EOD_GREEKS_HEADER, [EOD_GREEKS_PUT_ROW])
+
+        h = self.handler.register('/v3/option/history/greeks/eod', handler)
+        results = [g async for g in self.client.get_eod_greeks(
+            'SPXW', 20240315, strike=Decimal('5100'), right=OptionRight.PUT,
+            start_date=20240313, end_date=20240313,
+        )]
+        h.assert_csv()
+        assert len(results) == 1
+        g = results[0]
+        assert isinstance(g, EodGreeks)
+        assert g.gamma == Decimal('0.0034')
+        assert g.delta == Decimal('-0.1102')
+        assert g.iv == Decimal('0.1441')
+        assert g.underlying_price == Decimal('5165.3100')
+        assert g.close == Decimal('3.10')
+        assert g.volume == 6538
+        assert g.entity.expiration == datetime.date(2024, 3, 15)
+        assert g.entity.right == OptionRight.PUT
+        params = h.get_params()
+        assert params['strike'] == '5100.000'
+        assert params['right'] == 'PUT'
+        assert params['start_date'] == '20240313'
+
+    async def test_all_expirations_split_per_day(self):
+        async def handler(request):
+            return csv_response(EOD_GREEKS_HEADER, [EOD_GREEKS_PUT_ROW, EOD_GREEKS_CALL_ROW])
+
+        h = self.handler.register('/v3/option/history/greeks/eod', handler)
+        results = [g async for g in self.client.get_eod_greeks(
+            'SPXW', '*', max_dte=45, start_date=20240313, end_date=20240314,
+        )]
+        assert len(h.requests) == 2
+        assert len(results) == 4
+        assert [g.entity.expiration for g in results[:2]] == [datetime.date(2024, 3, 15), datetime.date(2024, 4, 19)]
+        params = h.get_params()
+        assert params['expiration'] == '*'
+        assert params['max_dte'] == '45'
+        assert 'strike' not in params
+
+    async def test_472_yields_nothing(self):
+        async def handler(request):
+            return web.Response(status=472, text='No data')
+
+        self.handler.register('/v3/option/history/greeks/eod', handler)
+        results = [g async for g in self.client.get_eod_greeks(
+            'SPXW', 20240315, start_date=20240316, end_date=20240316,
+        )]
+        assert results == []

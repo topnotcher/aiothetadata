@@ -20,6 +20,7 @@ __all__ = (
     'parse_index_price_report',
     'parse_first_order_greeks',
     'parse_open_interest',
+    'parse_eod_greeks',
 )
 
 
@@ -350,6 +351,40 @@ def parse_open_interest(data: Dict[str, str]) -> Dict[str, Any]:
         'time': parse_timestamp(data['timestamp']),
         'open_interest': int(data['open_interest']),
     }
+
+    if 'strike' in data:
+        parsed['strike'] = parse_strike(data['strike'])
+
+    if 'right' in data:
+        parsed['right'] = OptionRight(data['right'])
+
+    if 'symbol' in data:
+        parsed['symbol'] = data['symbol']
+
+    if data.get('expiration'):
+        parsed['expiration'] = parse_date(data['expiration'])
+
+    return parsed
+
+
+def parse_eod_greeks(data: Dict[str, str]) -> Dict[str, Any]:
+    """Parse fields from a ``greeks/eod`` API response.
+
+    :param data: Raw response row as a string-to-string mapping.
+    :returns: Parsed field dict suitable for constructing a
+        :class:`~aiothetadata.types.EodGreeks`.
+    """
+    parsed = {
+        'time': parse_timestamp(data['timestamp']),
+        'underlying_price': decimal.Decimal(data['underlying_price']),
+        'iv': decimal.Decimal(data['implied_vol']),
+        'volume': int(data['volume']),
+    }
+
+    for field in (
+        'iv_error', 'bid', 'ask', 'close', 'delta', 'gamma', 'theta', 'vega', 'rho', 'vanna', 'charm', 'vomma',
+    ):
+        parsed[field] = decimal.Decimal(data[field])
 
     if 'strike' in data:
         parsed['strike'] = parse_strike(data['strike'])

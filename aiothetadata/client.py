@@ -919,6 +919,59 @@ class ThetaOptionClient(_ThetaClient):
 
         return _gen()
 
+    def get_eod_greeks(
+        self,
+        symbol: str,
+        expiration: DateValue,
+        *,
+        strike: Optional[PriceValue] = None,
+        right: Optional[OptionRight] = None,
+        max_dte: Optional[int] = None,
+        start_date: DateValue,
+        end_date: DateValue,
+    ) -> AsyncGenerator[EodGreeks, None]:
+        """Get end-of-day greeks for option contracts over a date range.
+
+        One record per contract per trading day, computed after the close.
+        This is the only greeks endpoint that includes ``gamma`` on a
+        standard subscription.
+
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
+        :param expiration: Option expiration date, or ``'*'`` for every
+            expiration.
+        :param strike: Strike price. Optional — omit for entire chain.
+        :param right: Option right. Optional — omit for both.
+        :param max_dte: Only contracts with at most this many calendar days to
+            expiration. Optional.
+        :param start_date: First date to include.
+        :param end_date: Last date to include.
+        :return: Async generator of :class:`~.EodGreeks` objects.
+        """
+        params: Dict[str, Any] = {
+            'symbol': symbol,
+            'expiration': format_date(expiration),
+            'start_date': format_date(start_date),
+            'end_date': format_date(end_date),
+        }
+        if strike is not None:
+            params['strike'] = format_price(strike)
+        if right is not None:
+            params['right'] = right
+        if max_dte is not None:
+            params['max_dte'] = max_dte
+
+        single = strike is not None and right is not None and params['expiration'] != '*'
+        split_days = self.date_range_params(30 if single else 1)
+        raw = self.stream_data('option', 'history', 'greeks', 'eod', params_gen=split_days, **params)
+
+        async def _gen() -> AsyncGenerator[EodGreeks, None]:
+            async for row in raw:
+                parsed = parse_eod_greeks(row)
+                self._populate_entity_params(params, parsed)
+                yield EodGreeks(**parsed)
+
+        return _gen()
+
     # ── Open interest ─────────────────────────────────────────────────────────
 
     def get_chain_open_interest(

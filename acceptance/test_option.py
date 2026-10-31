@@ -9,7 +9,7 @@ from decimal import Decimal
 import pytest
 
 from aiothetadata.constants import OptionRight
-from aiothetadata.types import Quote, Trade, OhlcReport, EodReport, FirstOrderGreeks, OpenInterest
+from aiothetadata.types import Quote, Trade, OhlcReport, EodReport, FirstOrderGreeks, OpenInterest, EodGreeks
 
 from ._utils import (
     assert_quote, assert_ohlc,
@@ -292,3 +292,15 @@ async def test_get_chain_open_interest_snapshot(client):
     results = [r async for r in client.option.get_chain_open_interest(OPTION_SYMBOL, '*', max_dte=7)]
     assert len(results) > 0
     assert all(isinstance(r, OpenInterest) for r in results)
+
+
+@pytest.mark.asyncio
+async def test_get_eod_greeks_has_gamma(client):
+    """get_eod_greeks() returns second-order gamma on a standard subscription."""
+    results = [g async for g in client.option.get_eod_greeks(
+        'SPXW', datetime.date(2024, 3, 15), strike=Decimal('5100'), right=OptionRight.PUT,
+        start_date=datetime.date(2024, 3, 13), end_date=datetime.date(2024, 3, 13),
+    )]
+    assert len(results) == 1
+    assert isinstance(results[0], EodGreeks)
+    assert results[0].gamma > 0
