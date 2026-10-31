@@ -9,7 +9,7 @@ from decimal import Decimal
 import pytest
 
 from aiothetadata.constants import OptionRight
-from aiothetadata.types import Quote, Trade, OhlcReport, EodReport, FirstOrderGreeks
+from aiothetadata.types import Quote, Trade, OhlcReport, EodReport, FirstOrderGreeks, OpenInterest
 
 from ._utils import (
     assert_quote, assert_ohlc,
@@ -258,3 +258,37 @@ async def test_get_eod_full_chain(client):
         assert isinstance(r, EodReport)
         count += 1
     assert count > 0
+
+
+# ── Open interest ─────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_get_open_interest_historical(client):
+    """get_open_interest(date=D) returns the OI reported on D's morning (positions at the prior close)."""
+    result = await client.option.get_open_interest(
+        'SPXW', datetime.date(2024, 3, 15), Decimal('5100'), OptionRight.PUT, date=datetime.date(2024, 3, 14),
+    )
+    assert isinstance(result, OpenInterest)
+    assert result.open_interest == 7652
+    assert result.time.date() == datetime.date(2024, 3, 14)
+
+
+@pytest.mark.asyncio
+async def test_get_chain_open_interest_all_expirations(client):
+    """get_chain_open_interest('*', date=D) covers several expirations with parsed entities."""
+    expirations = set()
+    async for r in client.option.get_chain_open_interest(
+        'SPXW', '*', date=datetime.date(2024, 3, 14), max_dte=7,
+    ):
+        assert isinstance(r, OpenInterest)
+        assert r.open_interest >= 0
+        expirations.add(r.entity.expiration)
+    assert len(expirations) > 1
+
+
+@pytest.mark.asyncio
+async def test_get_chain_open_interest_snapshot(client):
+    """get_chain_open_interest() without dates returns the latest snapshot."""
+    results = [r async for r in client.option.get_chain_open_interest(OPTION_SYMBOL, '*', max_dte=7)]
+    assert len(results) > 0
+    assert all(isinstance(r, OpenInterest) for r in results)

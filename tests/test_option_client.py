@@ -8,7 +8,7 @@ from aiohttp import web
 from aiothetadata.client import ThetaOptionClient
 from aiothetadata.constants import OptionRight, QuoteCondition, Exchange, GreeksOrder
 from aiothetadata.types import (
-    Quote, Trade, OhlcReport, EodReport, FirstOrderGreeks, Option, FinancialEntityType,
+    Quote, Trade, OhlcReport, EodReport, FirstOrderGreeks, OpenInterest, Option, FinancialEntityType,
 )
 from aiothetadata import datetime as thetadt
 
@@ -813,4 +813,159 @@ class TestThetaOptionClientGetGreeksAtTime(BaseThetaClientTest):
             'SPXW', datetime.date(2026, 3, 20), Decimal('6600'), OptionRight.PUT,
             time=datetime.datetime(2026, 3, 12, 10, 0, 0),
         )
+        assert result is None
+
+
+# ── Open interest ─────────────────────────────────────────────────────────────
+
+OI_HISTORY_HEADER = ['symbol', 'expiration', 'strike', 'right', 'timestamp', 'open_interest']
+OI_SNAPSHOT_HEADER = ['timestamp', 'symbol', 'expiration', 'strike', 'right', 'open_interest']
+
+
+class TestThetaOptionClientGetChainOpenInterest(BaseThetaClientTest):
+
+    async def get_client(self, url):
+        return ThetaOptionClient(url)
+
+    async def test_snapshot_yields_open_interest(self):
+        data = [
+            ['2026-10-30T06:30:02.810', 'SPXW', '2026-11-02', '7480.000', 'PUT', '325'],
+            ['2026-10-30T06:30:03.297', 'SPXW', '2026-11-02', '7480.000', 'CALL', '6'],
+        ]
+
+        async def handler(request):
+            return csv_response(OI_SNAPSHOT_HEADER, data)
+
+        h = self.handler.register('/v3/option/snapshot/open_interest', handler)
+        results = [r async for r in self.client.get_chain_open_interest('SPXW', 20261102)]
+        h.assert_csv()
+        assert len(results) == 2
+        assert isinstance(results[0], OpenInterest)
+        assert results[0].open_interest == 325
+        assert results[0].entity == Option.create(
+            symbol='SPXW', expiration=datetime.date(2026, 11, 2), strike=Decimal('7480.000'), right=OptionRight.PUT,
+        )
+        assert results[0].time == datetime.datetime(2026, 10, 30, 6, 30, 2, 810000, tzinfo=thetadt.MarketTimeZone)
+        assert results[1].entity.right == OptionRight.CALL
+        params = h.get_params()
+        assert params['symbol'] == 'SPXW'
+        assert params['expiration'] == '20261102'
+        for key in ('strike', 'right', 'start_date', 'end_date', 'date'):
+            assert key not in params
+
+    async def test_snapshot_filters_passed(self):
+        async def handler(request):
+            return csv_response(OI_SNAPSHOT_HEADER, [])
+
+        h = self.handler.register('/v3/option/snapshot/open_interest', handler)
+        results = [r async for r in self.client.get_chain_open_interest(
+            'SPXW', 20261102, strike=Decimal('7480'), right=OptionRight.PUT, limit=10, max_dte=3,
+        )]
+        assert results == []
+        params = h.get_params()
+        assert params['strike'] == '7480.000'
+        assert params['right'] == 'PUT'
+        assert params['strike_range'] == '10'
+        assert params['max_dte'] == '3'
+
+    async def test_history_date_uses_history_endpoint(self):
+        data = [
+            ['SPXW', '2024-03-15', '5100.000', 'PUT', '2024-03-14T06:30:43.281', '7652'],
+            ['SPXW', '2024-03-15', '5100.000', 'CALL', '2024-03-14T06:30:10.467', '4286'],
+        ]
+
+        async def handler(request):
+            return csv_response(OI_HISTORY_HEADER, data)
+
+        h = self.handler.register('/v3/option/history/open_interest', handler)
+        results = [r async for r in self.client.get_chain_open_interest('SPXW', 20240315, date=20240314)]
+        assert [r.open_interest for r in results] == [7652, 4286]
+        assert results[0].entity.expiration == datetime.date(2024, 3, 15)
+        params = h.get_params()
+        assert params['start_date'] == '20240314'
+        assert params['end_date'] == '20240314'
+
+    async def test_history_all_expirations_parses_row_expiration(self):
+        data = [
+            ['SPXW', '2024-03-15', '5100.000', 'PUT', '2024-03-14T06:30:43.281', '7652'],
+            ['SPXW', '2024-04-19', '4700.000', 'CALL', '2024-03-14T06:30:35.329', '1072'],
+        ]
+
+        async def handler(request):
+            return csv_response(OI_HISTORY_HEADER, data)
+
+        h = self.handler.register('/v3/option/history/open_interest', handler)
+        results = [r async for r in self.client.get_chain_open_interest('SPXW', '*', date=20240314)]
+        assert [r.entity.expiration for r in results] == [datetime.date(2024, 3, 15), datetime.date(2024, 4, 19)]
+        assert h.get_params()['expiration'] == '*'
+
+    async def test_history_chain_range_split_per_day(self):
+        async def handler(request):
+            day = request.query['start_date']
+            ts = f'{day[:4]}-{day[4:6]}-{day[6:]}T06:30:00.000'
+            return csv_response(OI_HISTORY_HEADER, [['SPXW', '2024-03-15', '5100.000', 'PUT', ts, '1']])
+
+        h = self.handler.register('/v3/option/history/open_interest', handler)
+        results = [r async for r in self.client.get_chain_open_interest(
+            'SPXW', 20240315, start_date=20240311, end_date=20240313,
+        )]
+        assert len(results) == 3
+        assert len(h.requests) == 3
+        assert [h.get_params(i)['start_date'] for i in range(3)] == ['20240311', '20240312', '20240313']
+
+    async def test_date_and_range_are_exclusive(self):
+        with pytest.raises(ValueError):
+            self.client.get_chain_open_interest('SPXW', 20240315, date=20240314, start_date=20240311)
+
+    async def test_range_requires_both_ends(self):
+        with pytest.raises(ValueError):
+            self.client.get_chain_open_interest('SPXW', 20240315, start_date=20240311)
+
+    async def test_472_yields_nothing(self):
+        async def handler(request):
+            return web.Response(status=472, text='No data')
+
+        self.handler.register('/v3/option/history/open_interest', handler)
+        results = [r async for r in self.client.get_chain_open_interest('SPXW', 20240315, date=20240309)]
+        assert results == []
+
+
+class TestThetaOptionClientGetOpenInterest(BaseThetaClientTest):
+
+    async def get_client(self, url):
+        return ThetaOptionClient(url)
+
+    async def test_returns_snapshot_for_contract(self):
+        async def handler(request):
+            return csv_response(OI_SNAPSHOT_HEADER, [
+                ['2026-10-30T06:30:02.810', 'SPXW', '2026-11-02', '7480.000', 'PUT', '325'],
+            ])
+
+        h = self.handler.register('/v3/option/snapshot/open_interest', handler)
+        result = await self.client.get_open_interest('SPXW', 20261102, Decimal('7480'), OptionRight.PUT)
+        assert result is not None
+        assert result.open_interest == 325
+        params = h.get_params()
+        assert params['strike'] == '7480.000'
+        assert params['right'] == 'PUT'
+
+    async def test_returns_history_for_date(self):
+        async def handler(request):
+            return csv_response(OI_HISTORY_HEADER, [
+                ['SPXW', '2024-03-15', '5100.000', 'PUT', '2024-03-14T06:30:43.281', '7652'],
+            ])
+
+        h = self.handler.register('/v3/option/history/open_interest', handler)
+        result = await self.client.get_open_interest(
+            'SPXW', 20240315, Decimal('5100'), OptionRight.PUT, date=datetime.date(2024, 3, 14),
+        )
+        assert result.open_interest == 7652
+        assert h.get_params()['start_date'] == '20240314'
+
+    async def test_returns_none_for_472(self):
+        async def handler(request):
+            return web.Response(status=472, text='No data')
+
+        self.handler.register('/v3/option/snapshot/open_interest', handler)
+        result = await self.client.get_open_interest('SPXW', 20261102, Decimal('7480'), OptionRight.PUT)
         assert result is None

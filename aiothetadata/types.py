@@ -18,6 +18,7 @@ __all__ = (
     'EodReport',
     'IndexPriceReport',
     'FirstOrderGreeks',
+    'OpenInterest',
 
     'FinancialEntityType',
     'FinancialEntity',
@@ -207,3 +208,19 @@ class FirstOrderGreeks(BaseFinancialInfo):
     bid: decimal.Decimal
     #: Current ask price of the option.
     ask: decimal.Decimal
+
+
+@dataclass(slots=True, frozen=True)
+class OpenInterest(BaseFinancialInfo):
+    """Open interest for an option contract.
+
+    OPRA reports open interest once per trading day, at about 06:30 ET. The
+    figure reflects open contracts at the end of the *previous* trading day:
+    an :class:`OpenInterest` stamped on the morning of day ``D`` is the
+    position count after day ``D-1`` closed.
+    """
+
+    #: Time the open interest message was received (about 06:30 ET).
+    time: datetime.datetime
+    #: Number of outstanding contracts.
+    open_interest: int

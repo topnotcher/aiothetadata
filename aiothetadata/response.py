@@ -19,6 +19,7 @@ __all__ = (
     'parse_ohlc_report',
     'parse_index_price_report',
     'parse_first_order_greeks',
+    'parse_open_interest',
 )
 
 
@@ -331,5 +332,35 @@ def parse_first_order_greeks(data: Dict[str, str]) -> Dict[str, Any]:
 
     if 'symbol' in data:
         parsed['symbol'] = data['symbol']
+
+    return parsed
+
+
+def parse_open_interest(data: Dict[str, str]) -> Dict[str, Any]:
+    """Parse fields from an ``open_interest`` API response.
+
+    The contract's ``expiration`` is parsed from the row when present, so
+    that requests with ``expiration=*`` produce correct entities.
+
+    :param data: Raw response row as a string-to-string mapping.
+    :returns: Parsed field dict suitable for constructing a
+        :class:`~aiothetadata.types.OpenInterest`.
+    """
+    parsed = {
+        'time': parse_timestamp(data['timestamp']),
+        'open_interest': int(data['open_interest']),
+    }
+
+    if 'strike' in data:
+        parsed['strike'] = parse_strike(data['strike'])
+
+    if 'right' in data:
+        parsed['right'] = OptionRight(data['right'])
+
+    if 'symbol' in data:
+        parsed['symbol'] = data['symbol']
+
+    if data.get('expiration'):
+        parsed['expiration'] = parse_date(data['expiration'])
 
     return parsed

@@ -278,7 +278,7 @@ class ThetaOptionClient(_ThetaClient):
             entity_params['strike'] = parse_strike(request.get('strike', '0'))
 
         exp_str = request.get('expiration', '')
-        if exp_str:
+        if exp_str and exp_str != '*' and not entity_params.get('expiration'):
             entity_params['expiration'] = parse_date(exp_str)
 
         params['entity'] = Option.create(**entity_params)
@@ -918,6 +918,113 @@ class ThetaOptionClient(_ThetaClient):
                 yield FirstOrderGreeks(**parsed)
 
         return _gen()
+
+    # ── Open interest ─────────────────────────────────────────────────────────
+
+    def get_chain_open_interest(
+        self,
+        symbol: str,
+        expiration: DateValue,
+        *,
+        strike: Optional[PriceValue] = None,
+        right: Optional[OptionRight] = None,
+        limit: Optional[int] = None,
+        max_dte: Optional[int] = None,
+        date: Optional[DateValue] = None,
+        start_date: Optional[DateValue] = None,
+        end_date: Optional[DateValue] = None,
+    ) -> AsyncGenerator[OpenInterest, None]:
+        """Get open interest for option contracts.
+
+        Can be invoked in two ways:
+
+        - Without ``date``, ``start_date`` or ``end_date``: returns the latest
+          reported open interest for each matching contract (snapshot).
+        - With ``date``, or ``start_date`` and ``end_date``: returns historical
+          open interest, one result per contract per trading day.
+
+        OPRA reports open interest once per day at about 06:30 ET, and the
+        figure reflects positions at the end of the previous trading day. A
+        contract with no open interest may have no record at all.
+
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
+        :param expiration: Option expiration date, or ``'*'`` for every
+            expiration.
+        :param strike: Filter to a specific strike. Optional.
+        :param right: Filter to a specific right. Optional.
+        :param limit: Limit results to N strikes either side of ATM. Optional.
+        :param max_dte: Only contracts with at most this many calendar days to
+            expiration. Optional.
+        :param date: Single historical date. Mutually exclusive with
+            ``start_date`` and ``end_date``.
+        :param start_date: First historical date. Requires ``end_date``.
+        :param end_date: Last historical date. Requires ``start_date``.
+        :return: Async generator of :class:`~.OpenInterest` objects.
+        """
+        params: Dict[str, Any] = {
+            'symbol': symbol,
+            'expiration': format_date(expiration),
+        }
+        if strike is not None:
+            params['strike'] = format_price(strike)
+        if right is not None:
+            params['right'] = right
+        if limit is not None:
+            params['strike_range'] = limit
+        if max_dte is not None:
+            params['max_dte'] = max_dte
+
+        if date is not None:
+            if start_date is not None or end_date is not None:
+                raise ValueError('date is mutually exclusive with start_date and end_date')
+            start_date = end_date = date
+
+        if start_date is not None or end_date is not None:
+            if start_date is None or end_date is None:
+                raise ValueError('start_date and end_date must both be provided')
+            params['start_date'] = format_date(start_date)
+            params['end_date'] = format_date(end_date)
+            # A full SPXW chain is ~15k rows per day with expiration=*; one
+            # contract is one row per day.
+            single = strike is not None and right is not None and params['expiration'] != '*'
+            split_days = self.date_range_params(30 if single else 1)
+            gen = self.stream_data('option', 'history', 'open_interest', params_gen=split_days, **params)
+        else:
+            gen = self.stream_data('option', 'snapshot', 'open_interest', **params)
+
+        async def _gen() -> AsyncGenerator[OpenInterest, None]:
+            async for row in gen:
+                parsed = parse_open_interest(row)
+                self._populate_entity_params(params, parsed)
+                yield OpenInterest(**parsed)
+
+        return _gen()
+
+    async def get_open_interest(
+        self,
+        symbol: str,
+        expiration: DateValue,
+        strike: PriceValue,
+        right: OptionRight,
+        *,
+        date: Optional[DateValue] = None,
+    ) -> Optional[OpenInterest]:
+        """Get the open interest for a specific option contract.
+
+        Delegates to :meth:`get_chain_open_interest` with ``strike`` and
+        ``right`` fixed, returning the first result.
+
+        :param symbol: Option symbol (e.g. ``'SPXW'``).
+        :param expiration: Option expiration date.
+        :param strike: Strike price.
+        :param right: Option right.
+        :param date: If provided, returns the open interest reported on the
+            morning of this date (positions at the previous close). If
+            omitted, returns the latest snapshot.
+        :return: :class:`~.OpenInterest`, or ``None`` if no data.
+        """
+        gen = self.get_chain_open_interest(symbol, expiration, strike=strike, right=right, date=date)
+        return await anext(gen, None)
 
     # ── EOD ───────────────────────────────────────────────────────────────────
 
