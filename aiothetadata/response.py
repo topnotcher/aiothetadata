@@ -172,7 +172,7 @@ def parse_trade_fields(data: Dict[str, str]) -> Dict[str, Any]:
         if field in data:
             value = int(data[field])
             if value != 255:
-                conditions.append(TradeCondition(value))
+                conditions.append(TradeCondition.from_code(value))
 
     parsed['conditions'] = tuple(conditions)
 

@@ -65,3 +65,20 @@ def test_quote_condition_from_code_unknown_quacks_like_a_member(caplog):
     assert unknown.description == 'Unknown quote condition (252)'
     assert repr(unknown) == '<UnknownQuoteCondition.UNKNOWN_252: 252>'
     assert len([r for r in caplog.records if '252' in r.getMessage()]) == 1
+
+
+def test_trade_condition_from_code_unknown_has_no_flags(caplog):
+    assert TradeCondition.from_code(0) is TradeCondition.REGULAR
+
+    with caplog.at_level('WARNING', logger='aiothetadata.constants'):
+        unknown = TradeCondition.from_code(253)
+
+    assert isinstance(unknown, UnknownTradeCondition)
+    assert unknown == 253
+    assert unknown.name == 'UNKNOWN_253'
+    assert repr(unknown) == '<UnknownTradeCondition.UNKNOWN_253: 253>'
+    assert len([r for r in caplog.records if '253' in r.getMessage()]) == 1
+
+    for flag in ('cancel', 'late_report', 'auto_executed', 'volume', 'high', 'low', 'last'):
+        with pytest.raises(AttributeError):
+            getattr(unknown, flag)

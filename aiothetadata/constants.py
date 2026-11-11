@@ -14,6 +14,7 @@ __all__ = (
     'Exchange',
     'UnknownExchange',
     'TradeCondition',
+    'UnknownTradeCondition',
     'Interval',
     'GreeksOrder',
 )
@@ -195,6 +196,17 @@ class UnknownExchange(_UnknownCode):
     """An exchange code that :class:`Exchange` does not list yet."""
     __slots__ = ()
     _label = 'exchange'
+
+
+class UnknownTradeCondition(_UnknownCode):
+    """
+    A trade condition code that :class:`TradeCondition` does not list yet.
+
+    It has none of the member flags (``cancel``, ``volume``, ``last``, ...): the metadata for an unlisted code is
+    unknown, so reading a flag raises ``AttributeError`` instead of guessing.
+    """
+    __slots__ = ()
+    _label = 'trade condition'
 
 
 def _from_code(enum_cls: type[enum.IntEnum], code: int, unknown_cls: type[_UnknownCode]):
@@ -640,6 +652,15 @@ class TradeCondition(enum.IntEnum):
     ASK_AGGRESSOR = 146
     MULTILAT_COMP_TR_PDP = 147
     EXTENDED_HOURS_TRADE = 148
+
+    @classmethod
+    def from_code(cls, code: int) -> 'TradeCondition | UnknownTradeCondition':
+        """
+        Create a ``TradeCondition`` from the integer ``code``. If the ``code`` is known, return the ``TradeCondition``
+        member. Otherwise, return an :class:`UnknownTradeCondition` carrying the code, and log a warning the first
+        time that code is seen.
+        """
+        return _from_code(cls, code, UnknownTradeCondition)
 
     @property
     def cancel(self) -> bool:

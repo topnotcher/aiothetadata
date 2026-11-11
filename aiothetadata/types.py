@@ -4,7 +4,7 @@ import datetime
 from dataclasses import dataclass
 from typing import Optional, Union, Tuple
 
-from .constants import Exchange, UnknownExchange, QuoteCondition, UnknownQuoteCondition, TradeCondition, OptionRight
+from .constants import Exchange, UnknownExchange, QuoteCondition, UnknownQuoteCondition, TradeCondition, UnknownTradeCondition, OptionRight
 
 
 __all__ = (
@@ -124,14 +124,14 @@ class Quote(BaseFinancialInfo):
 class Trade(BaseFinancialInfo):
     time: datetime.datetime
 
-    conditions: Tuple[TradeCondition, ...]
+    conditions: Tuple[TradeCondition | UnknownTradeCondition, ...]
     price: decimal.Decimal
     sequence: int
     size: int
     exchange: Exchange | UnknownExchange | None = None
 
     @property
-    def condition(self) -> TradeCondition:
+    def condition(self) -> TradeCondition | UnknownTradeCondition:
         return self.conditions[0]
 
 

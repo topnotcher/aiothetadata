@@ -227,3 +227,14 @@ def test_parse_quote_fields_unknown_exchange():
     assert isinstance(parsed['bid_exchange'], UnknownExchange)
     assert parsed['bid_exchange'] == 251
     assert parsed['ask_exchange'] is Exchange.CBOE
+
+
+def test_parse_trade_fields_unknown_condition():
+    raw = {
+        'timestamp': '2025-02-18T09:58:58.270', 'sequence': '1', 'size': '1', 'price': '4.6500',
+        'condition': '254', 'ext_condition1': '17', 'ext_condition2': '255',
+    }
+    parsed = parse_trade_fields(raw)
+
+    assert parsed['conditions'] == (254, TradeCondition.POSIT)
+    assert isinstance(parsed['conditions'][0], UnknownTradeCondition)
