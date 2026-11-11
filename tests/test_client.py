@@ -1,4 +1,7 @@
 """Tests for the ThetaClient base class (pagination, HTTP errors)."""
+import socket
+
+import aiohttp
 import pytest
 from aiohttp import web
 
@@ -69,6 +72,52 @@ class TestThetaClientPagination(BaseThetaClientTest):
             ('20240301', '20240330'), ('20240331', '20240331'),
         ]
         assert ranges == expected
+
+    async def test_connection_refused_raises(self):
+        """A request that can't connect should raise, not end with no data."""
+        with socket.socket() as sock:
+            sock.bind(('127.0.0.1', 0))
+            port = sock.getsockname()[1]
+
+        async with ThetaOptionClient(f'http://127.0.0.1:{port}/') as client:
+            with pytest.raises(aiohttp.ClientConnectionError):
+                await client.get_symbols()
+
+    async def test_failed_page_raises_after_earlier_pages(self):
+        """The pages before a failed one should be yielded, then the error raised."""
+        with socket.socket() as sock:
+            sock.bind(('127.0.0.1', 0))
+            port = sock.getsockname()[1]
+
+        async def get_roots(request):
+            response = csv_response(['symbol'], [['MSFT'], ['AAPL']])
+            response.headers['Next-Page'] = f'http://127.0.0.1:{port}/page/1'
+            return response
+
+        self.handler.register('/v3/option/list/symbols', get_roots)
+
+        symbols = []
+        with pytest.raises(aiohttp.ClientConnectionError):
+            async for row in self.client.stream_data('option', 'list', 'symbols'):
+                symbols.append(row['symbol'])
+        assert symbols == ['MSFT', 'AAPL']
+
+    async def test_params_error_raises(self):
+        """An error building the next request should raise, not end the data."""
+        def params(base):
+            yield base
+            raise ValueError('bad params')
+
+        async def get_roots(request):
+            return csv_response(['symbol'], [['MSFT']])
+
+        self.handler.register('/v3/option/list/symbols', get_roots)
+
+        symbols = []
+        with pytest.raises(ValueError, match='bad params'):
+            async for row in self.client.stream_data('option', 'list', 'symbols', params_gen=params):
+                symbols.append(row['symbol'])
+        assert symbols == ['MSFT']
 
 
 class TestThetaClientHttpErrors(BaseThetaClientTest):

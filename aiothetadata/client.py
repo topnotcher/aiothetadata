@@ -62,7 +62,7 @@ class _PagedRequest:
     :param params: A generator that yields query params for successive
         requests.
     """
-    __slots__ = ('url', 'params', 'session', 'task', 'queue', 'last_resp')
+    __slots__ = ('url', 'params', 'session', 'task', 'queue', 'last_resp', 'error')
 
     def __init__(self, session: aiohttp.ClientSession, url: str, params: ParamsGenerator):
         self.session = session
@@ -70,6 +70,7 @@ class _PagedRequest:
         self.params = params
         self.task = None
         self.last_resp = None
+        self.error = None
         self.queue = asyncio.Queue()
 
     async def get_pages(self) -> None:
@@ -87,8 +88,9 @@ class _PagedRequest:
 
         # TODO: can I move passing the URL/params into the task that calls this?
         # Maybe a list instead of a generator...
-        except Exception:
-            log.exception('Error in paged request')
+        except Exception as e:
+            # The pages already queued are still read; then the iterator raises this.
+            self.error = e
             self.queue.shutdown()
 
     def get_next_page(self, resp) -> Optional[Coroutine[None, None, aiohttp.ClientResponse]]:
@@ -107,10 +109,6 @@ class _PagedRequest:
         except StopIteration:
             return None
 
-        except Exception:
-            log.exception("Error getting next request")
-            return None
-
     def __aiter__(self):
         self.task = asyncio.create_task(self.get_pages())
         return self
@@ -123,6 +121,10 @@ class _PagedRequest:
 
         except asyncio.QueueShutDown:
             await self.close()
+
+            error, self.error = self.error, None
+            if error is not None:
+                raise error from None
 
             raise StopAsyncIteration from None
 
