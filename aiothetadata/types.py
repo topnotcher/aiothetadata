@@ -124,14 +124,14 @@ class Quote(BaseFinancialInfo):
 class Trade(BaseFinancialInfo):
     time: datetime.datetime
 
-    conditions: Tuple[QuoteCondition]
+    conditions: Tuple[TradeCondition, ...]
     price: decimal.Decimal
     sequence: int
     size: int
     exchange: Exchange | UnknownExchange | None = None
 
     @property
-    def condition(self) -> QuoteCondition:
+    def condition(self) -> TradeCondition:
         return self.conditions[0]
 
 
