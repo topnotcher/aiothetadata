@@ -262,7 +262,7 @@ _EXCHANGE_NAMES = {
     17: "Chicago Stock Exchange",
     18: "Toronto Stock Exchange",
     19: "Canadian Venture Exchange",
-    20: "Chicago ercantile Exchange",
+    20: "Chicago Mercantile Exchange",
     21: "New York Board of Trade",
     22: "ISE Mercury",
     23: "COMEX (division of NYMEX)",
@@ -316,11 +316,16 @@ _EXCHANGE_NAMES = {
     71: "NYSE Global Index Feed",
     72: "TSX Indexes",
     73: "Members Exchange",
-    74: "EMPTY",
+    74: "CBOE CGI",
     75: "Long-Term Stock Exchange",
-    76: "EMPTY",
-    77: "EMPTY",
+    76: "MIAX Sapphire",
+    77: "24X National Exchange",
+    78: "Texas Stock Exchange",
+    79: "MX2 Options",
 }
+
+#: Symbols from the ThetaData exchange table that are not valid member names.
+_EXCHANGE_SYMBOL_ALIASES = {"24X": "X24", "CME Floor": "CMEFloor"}
 
 class Exchange(enum.IntEnum):
     UNKNOWN = 0
@@ -397,17 +402,19 @@ class Exchange(enum.IntEnum):
     GIF = 71
     TSIX = 72
     MEMX = 73
-    _EMPT1 = 74
+    CGI = 74
     LTSE = 75
-    _EMPT2 = 76
-    _EMPT3 = 77
+    SPHR = 76
+    X24 = 77  # 24X National Exchange; the symbol "24X" is not a Python identifier.
+    TXSE = 78
+    MX2 = 79
 
     @classmethod
     def from_symbol(cls, symbol: str) -> 'Exchange':
         """
         Get the exchange from the symbol.
         """
-        return getattr(cls, symbol)
+        return getattr(cls, _EXCHANGE_SYMBOL_ALIASES.get(symbol, symbol))
 
     @property
     def description(self) -> str:
