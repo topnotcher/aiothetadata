@@ -214,3 +214,16 @@ def test_parse_first_order_greeks():
     }
 
     assert parse_first_order_greeks(raw) == expected
+
+
+def test_parse_quote_fields_unknown_exchange():
+    raw = {
+        'timestamp': '2025-02-17T10:00:00',
+        'bid_size': '1', 'bid_exchange': '251', 'bid': '1.0000', 'bid_condition': '50',
+        'ask_size': '1', 'ask_exchange': '5', 'ask': '1.1000', 'ask_condition': '50',
+    }
+    parsed = parse_quote_fields(raw)
+
+    assert isinstance(parsed['bid_exchange'], UnknownExchange)
+    assert parsed['bid_exchange'] == 251
+    assert parsed['ask_exchange'] is Exchange.CBOE

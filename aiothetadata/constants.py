@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+import logging
 
 from ._trade_conditions import _TRADE_CONDITIONS
 
@@ -9,7 +10,9 @@ __all__ = (
     'OptionRight',
     'TradingHours',
     'QuoteCondition',
+    'UnknownQuoteCondition',
     'Exchange',
+    'UnknownExchange',
     'TradeCondition',
     'Interval',
     'GreeksOrder',
@@ -145,6 +148,71 @@ class Interval(enum.StrEnum):
             raise ValueError(f"Unsupported interval: {m} minutes.") from None
 
 
+#: ``(enum name, code)`` pairs already warned about, so each unknown code is logged once per process.
+_UNKNOWN_CODES_SEEN: set[tuple[str, int]] = set()
+
+
+class _UnknownCode(int):
+    """
+    A code ThetaData sent that the matching enum does not list yet.
+
+    It is the ``int`` code, and it quacks like an enum member: ``name``, ``value`` and ``description`` work and it
+    prints like one, so callers can treat an ``Enum | Unknown...`` field uniformly. Add the code to the enum once
+    ThetaData's tables name it (https://thetadata.net/docs/Articles/Errors-Exchanges-Conditions/).
+    """
+    __slots__ = ()
+
+    #: What the code names, for ``description``.
+    _label = 'code'
+
+    @property
+    def name(self) -> str:
+        return f'UNKNOWN_{int(self)}'
+
+    @property
+    def value(self) -> int:
+        return int(self)
+
+    @property
+    def description(self) -> str:
+        return f'Unknown {self._label} ({int(self)})'
+
+    def __repr__(self) -> str:
+        return f'<{type(self).__name__}.{self.name}: {int(self)}>'
+
+    def __str__(self) -> str:
+        # Like IntEnum since Python 3.11: str() is the plain integer, repr() names the member.
+        return int.__repr__(self)
+
+
+class UnknownQuoteCondition(_UnknownCode):
+    """A quote condition code that :class:`QuoteCondition` does not list yet."""
+    __slots__ = ()
+    _label = 'quote condition'
+
+
+class UnknownExchange(_UnknownCode):
+    """An exchange code that :class:`Exchange` does not list yet."""
+    __slots__ = ()
+    _label = 'exchange'
+
+
+def _from_code(enum_cls: type[enum.IntEnum], code: int, unknown_cls: type[_UnknownCode]):
+    """The enum member for ``code``, or ``unknown_cls(code)`` with a warning the first time that code is seen."""
+    try:
+        return enum_cls(code)
+
+    except ValueError:
+        key = (enum_cls.__name__, code)
+        if key not in _UNKNOWN_CODES_SEEN:
+            _UNKNOWN_CODES_SEEN.add(key)
+            logging.getLogger(__name__).warning(
+                'Unknown ThetaData %s code %d; add it to aiothetadata.constants.%s',
+                unknown_cls._label, code, enum_cls.__name__)  # pylint: disable=protected-access
+
+        return unknown_cls(code)
+
+
 class QuoteCondition(enum.IntEnum):
     """
     Quote condition
@@ -229,17 +297,13 @@ class QuoteCondition(enum.IntEnum):
     RETAIL_QTE = 74
 
     @classmethod
-    def from_code(cls, code: int) -> 'QuoteCondition':
+    def from_code(cls, code: int) -> 'QuoteCondition | UnknownQuoteCondition':
         """
-        Create a ``QuoteCondition`` from the integer ``code``. If the ``code``
-        is known, return the ``QuoteCondition`` instance. Otherwise, return the
-        integer.
+        Create a ``QuoteCondition`` from the integer ``code``. If the ``code`` is known, return the ``QuoteCondition``
+        member. Otherwise, return an :class:`UnknownQuoteCondition` carrying the code, and log a warning the first
+        time that code is seen.
         """
-        try:
-            return cls(code)
-
-        except ValueError:
-            return code
+        return _from_code(cls, code, UnknownQuoteCondition)
 
 _EXCHANGE_NAMES = {
     0: "Unknown",
@@ -415,6 +479,15 @@ class Exchange(enum.IntEnum):
         Get the exchange from the symbol.
         """
         return getattr(cls, _EXCHANGE_SYMBOL_ALIASES.get(symbol, symbol))
+
+    @classmethod
+    def from_code(cls, code: int) -> 'Exchange | UnknownExchange':
+        """
+        Create an ``Exchange`` from the integer ``code``. If the ``code`` is known, return the ``Exchange`` member.
+        Otherwise, return an :class:`UnknownExchange` carrying the code, and log a warning the first time that code
+        is seen.
+        """
+        return _from_code(cls, code, UnknownExchange)
 
     @property
     def description(self) -> str:

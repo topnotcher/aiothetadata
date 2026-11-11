@@ -135,7 +135,7 @@ def parse_quote_fields(data: Dict[str, str]) -> Dict[str, Any]:
     parsed['time'] = parse_date_time(data['date'], data['ms_of_day'])
 
     for field in ('bid_exchange', 'ask_exchange'):
-        parsed[field] = Exchange(int(data[field]))
+        parsed[field] = Exchange.from_code(int(data[field]))
 
     return parsed
 
@@ -155,7 +155,7 @@ def parse_trade_fields(data: Dict[str, str]) -> Dict[str, Any]:
     parsed['time'] = parse_timestamp(data['timestamp'])
 
     if 'exchange' in data:
-        parsed['exchange'] = Exchange(int(data['exchange']))
+        parsed['exchange'] = Exchange.from_code(int(data['exchange']))
 
     if 'strike' in data:
         parsed['strike'] = parse_strike(data['strike'])
@@ -301,7 +301,7 @@ def parse_quote_fields(data: Dict[str, str]) -> Dict[str, Any]:
 
     if 'bid_exchange' in data and 'ask_exchange' in data:
         for field in ('bid_exchange', 'ask_exchange'):
-            parsed[field] = Exchange(int(data[field]))
+            parsed[field] = Exchange.from_code(int(data[field]))
 
     return parsed
 

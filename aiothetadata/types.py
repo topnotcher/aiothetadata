@@ -4,7 +4,7 @@ import datetime
 from dataclasses import dataclass
 from typing import Optional, Union, Tuple
 
-from .constants import Exchange, QuoteCondition, TradeCondition, OptionRight
+from .constants import Exchange, UnknownExchange, QuoteCondition, UnknownQuoteCondition, TradeCondition, OptionRight
 
 
 __all__ = (
@@ -107,13 +107,13 @@ class Quote(BaseFinancialInfo):
 
     bid: decimal.Decimal
     bid_size: int
-    bid_exchange: Exchange
-    bid_condition: QuoteCondition
+    bid_exchange: Exchange | UnknownExchange
+    bid_condition: QuoteCondition | UnknownQuoteCondition
 
     ask: decimal.Decimal
     ask_size: int
-    ask_exchange: Exchange
-    ask_condition: QuoteCondition
+    ask_exchange: Exchange | UnknownExchange
+    ask_condition: QuoteCondition | UnknownQuoteCondition
 
     @property
     def mid(self) -> decimal.Decimal:
@@ -128,7 +128,7 @@ class Trade(BaseFinancialInfo):
     price: decimal.Decimal
     sequence: int
     size: int
-    exchange: Exchange | None = None
+    exchange: Exchange | UnknownExchange | None = None
 
     @property
     def condition(self) -> QuoteCondition:
@@ -160,13 +160,13 @@ class EodReport(BaseFinancialInfo):
 
     bid: decimal.Decimal
     bid_size: int
-    bid_exchange: Exchange
-    bid_condition: QuoteCondition
+    bid_exchange: Exchange | UnknownExchange
+    bid_condition: QuoteCondition | UnknownQuoteCondition
 
     ask: decimal.Decimal
     ask_size: int
-    ask_exchange: Exchange
-    ask_condition: QuoteCondition
+    ask_exchange: Exchange | UnknownExchange
+    ask_condition: QuoteCondition | UnknownQuoteCondition
 
     open: decimal.Decimal
     high: decimal.Decimal
